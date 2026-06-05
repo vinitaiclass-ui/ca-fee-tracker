@@ -604,7 +604,8 @@ function renderCADashboard(clients) {
       <div class="stat-card" style="border-top:none"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#9999ff,transparent)"></div><div class="stat-label">ITR Filed</div><div class="stat-value" style="color:#9999ff">${itrFiled}</div><div class="stat-sub">Click to see list</div></div>
       <div class="stat-card" style="border-top:none"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#5555ff,transparent)"></div><div class="stat-label">Yet to File</div><div class="stat-value" style="color:#7777dd">${itrUnfiled}</div><div class="stat-sub">Click to see list</div></div>
       <div class="stat-card green"><div class="stat-label">Fees Collected</div><div class="stat-value" style="font-size:20px">${fmt(received)}</div><div class="stat-sub">${pct}% of total billed</div><div class="stat-icon" style="font-size:40px;opacity:.1">₹</div></div>
-      <div class="stat-card orange"><div class="stat-label">Fees Pending</div><div class="stat-value" style="font-size:20px">${fmt(billed-received)}</div><div class="stat-sub">${billable.filter(c=>c.status!=="Received").length} clients outstanding</div><div class="stat-icon" style="font-size:40px;opacity:.1">⚠</div></div>
+      <div class="stat-card" style="border-top:none;position:relative"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#ff4444,transparent)"></div><div class="stat-label">🔴 Filed — Fee Pending</div><div class="stat-value" style="font-size:20px;color:#ff7b7b">${fmt(billable.filter(c=>c.itrFiled&&c.status!=="Received").reduce((s,c)=>s+c.feeCharged-c.amountReceived,0))}</div><div class="stat-sub" style="color:#ff9999">${billable.filter(c=>c.itrFiled&&c.status!=="Received").length} clients — urgent</div></div>
+      <div class="stat-card" style="border-top:none;position:relative"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#ffaa00,transparent)"></div><div class="stat-label">🟡 Not Filed — Fee Pending</div><div class="stat-value" style="font-size:20px;color:#ffcc66">${fmt(billable.filter(c=>!c.itrFiled&&c.status!=="Received").reduce((s,c)=>s+c.feeCharged-c.amountReceived,0))}</div><div class="stat-sub" style="color:#ffdd88">${billable.filter(c=>!c.itrFiled&&c.status!=="Received").length} clients — expected</div></div>
       <div class="stat-card gold"><div class="stat-label">Total Billed</div><div class="stat-value" style="font-size:20px">${fmt(billed)}</div><div class="stat-sub">${waived > 0 ? waived+" waived" : "All clients"}</div><div class="stat-icon" style="font-size:40px;opacity:.1">⊞</div></div>
     </div>
     <div class="filing-overview" style="margin-top:20px">
@@ -730,22 +731,12 @@ function renderReports(clients) {
   const billable = clients.filter(c=>!c.feeWaived);
   const billed   = billable.reduce((s,c)=>s+c.feeCharged,0);
   const received = billable.reduce((s,c)=>s+c.amountReceived,0);
-  const pending  = billable.filter(c=>c.status!=="Received").sort((a,b)=>(b.feeCharged-b.amountReceived)-(a.feeCharged-a.amountReceived));
+  const pendingFiled   = billable.filter(c=>c.itrFiled  && c.status!=="Received").sort((a,b)=>(b.feeCharged-b.amountReceived)-(a.feeCharged-a.amountReceived));
+  const pendingUnfiled = billable.filter(c=>!c.itrFiled && c.status!=="Received").sort((a,b)=>(b.feeCharged-b.amountReceived)-(a.feeCharged-a.amountReceived));
+  const pending = [...pendingFiled, ...pendingUnfiled];
   const byMode   = PAY_MODES.map(m=>{ const g=clients.filter(c=>c.paymentMode===m); return {mode:m,count:g.length,rcv:g.reduce((s,c)=>s+c.amountReceived,0)}; }).filter(x=>x.count>0);
 
-  const pendingRows = pending.map((c,i)=>{
-    const bal=c.feeCharged-c.amountReceived;
-    return `<tr>
-      <td style="font-size:12px;color:var(--text-3)">${i+1}</td>
-      <td class="td-name">${c.name}</td><td class="td-pan">${c.pan}</td>
-      <td style="font-size:12px;color:var(--text-3)">${c.mobile||"—"}</td>
-      <td style="font-size:11px;color:var(--text-3)">${c.ay}</td>
-      <td class="td-amount">${fmt(c.feeCharged)}</td>
-      <td class="td-amount" style="color:#66ffaa">${fmt(c.amountReceived)}</td>
-      <td class="td-amount" style="color:#ff7b7b">${fmt(bal)}</td>
-      <td>${statusPill(c.status)}</td>
-      <td style="font-size:11px;color:var(--text-3);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.remarks||"—"}</td>
-    </tr>`;}).join("");
+  // pendingRows replaced by inline makeRows in template
 
   const modeCards = byMode.map(r=>`<div style="background:var(--navy-3);border-radius:var(--radius);padding:12px 14px"><div style="font-size:11px;color:var(--text-3);margin-bottom:4px">${r.mode}</div><div style="font-size:14px;font-family:'DM Mono',monospace;color:#66ffaa">${fmt(r.rcv)}</div><div style="font-size:11px;color:var(--text-3);margin-top:2px">${r.count} payment(s)</div></div>`).join("");
 
@@ -767,11 +758,46 @@ function renderReports(clients) {
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">${modeCards||'<span style="font-size:12px;color:var(--text-3)">No payments recorded</span>'}</div>
       </div>
     </div>
-    <div style="margin:10px 0 8px;font-size:12px;color:var(--text-3)">⚠ All Pending / Partial Clients (${pending.length})</div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>#</th><th>Name</th><th>PAN</th><th>Mobile</th><th>AY</th><th>Fee</th><th>Received</th><th>Balance</th><th>Status</th><th>Remarks</th></tr></thead>
-      <tbody>${pendingRows||'<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--text-3)">🎉 All payments received!</td></tr>'}</tbody>
-    </table></div>
+    ${(()=>{
+      const sc2 = (st) => { const s=STATUS_COLORS[st]||STATUS_COLORS.Pending; return s; };
+      const fmtRow = (c,i) => {
+        const bal = c.feeCharged - c.amountReceived;
+        const sc  = sc2(c.status);
+        const pill= '<span class="status-pill" style="background:'+sc.bg+';color:'+sc.text+'">'+
+                    '<span class="status-dot" style="background:'+sc.dot+'">&#8203;</span>'+c.status+'</span>';
+        return '<tr>'+
+          '<td style="font-size:12px;color:var(--text-3)">'+(i+1)+'</td>'+
+          '<td class="td-name">'+c.name+'</td>'+
+          '<td class="td-pan">'+c.pan+'</td>'+
+          '<td style="font-size:12px;color:var(--text-3)">'+(c.mobile||'&#8212;')+'</td>'+
+          '<td style="font-size:11px;color:var(--text-3)">'+c.ay+'</td>'+
+          '<td class="td-amount">'+fmt(c.feeCharged)+'</td>'+
+          '<td class="td-amount" style="color:#66ffaa">'+fmt(c.amountReceived)+'</td>'+
+          '<td class="td-amount" style="color:#ff7b7b">'+fmt(bal)+'</td>'+
+          '<td>'+pill+'</td>'+
+          '<td style="font-size:11px;color:var(--text-3);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(c.remarks||'&#8212;')+'</td>'+
+          '</tr>';
+      };
+      const thead = '<thead><tr><th>#</th><th>Name</th><th>PAN</th><th>Mobile</th><th>AY</th><th>Fee</th><th>Received</th><th>Balance</th><th>Status</th><th>Remarks</th></tr></thead>';
+      const filedAmt   = pendingFiled.reduce((s,c)=>s+c.feeCharged-c.amountReceived,0);
+      const unfiledAmt = pendingUnfiled.reduce((s,c)=>s+c.feeCharged-c.amountReceived,0);
+      const noFiled   = '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--text-3)">No pending fees for filed returns!</td></tr>';
+      const noUnfiled = '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--text-3)">No pending fees for unfiled returns!</td></tr>';
+      const filedRows   = pendingFiled.length   ? pendingFiled.map(fmtRow).join('')   : noFiled;
+      const unfiledRows = pendingUnfiled.length ? pendingUnfiled.map(fmtRow).join('') : noUnfiled;
+      return (
+        '<div style="margin:16px 0 8px;display:flex;align-items:center;gap:10px">'+
+          '<span style="font-size:13px;font-weight:600;color:#ff7b7b">ITR Filed &#8212; Fee Pending ('+pendingFiled.length+' clients &middot; '+fmt(filedAmt)+')</span>'+
+          '<span style="font-size:10px;background:rgba(255,68,68,0.1);color:#ff9999;padding:2px 8px;border-radius:4px">ACTION NEEDED</span>'+
+        '</div>'+
+        '<div class="table-wrap"><table>'+thead+'<tbody>'+filedRows+'</tbody></table></div>'+
+        '<div style="margin:20px 0 8px;display:flex;align-items:center;gap:10px">'+
+          '<span style="font-size:13px;font-weight:600;color:#ffcc66">ITR Not Filed &#8212; Fee Pending ('+pendingUnfiled.length+' clients &middot; '+fmt(unfiledAmt)+')</span>'+
+          '<span style="font-size:10px;background:rgba(255,170,0,0.1);color:#ffdd88;padding:2px 8px;border-radius:4px">EXPECTED</span>'+
+        '</div>'+
+        '<div class="table-wrap"><table>'+thead+'<tbody>'+unfiledRows+'</tbody></table></div>'
+      );
+    })()}
   </div>`;
 }
 
