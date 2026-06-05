@@ -485,7 +485,7 @@ function renderApp() {
 }
 
 function goPage(p) { state.page = p; renderApp(); }
-function setAY(ay) { state.filterAY = ay; state.dashDrill = null; renderApp(); }
+function setAY(ay) { state.filterAY = ay; state.dashDrill = null; state.assocDrill = null; renderApp(); }
 function signOut() { state.role=null; state.page="home"; render(); }
 
 // ─── PAGE ROUTER ─────────────────────────────────────────────────────────────
@@ -507,6 +507,59 @@ function renderPage() {
 }
 
 // ─── ASSOCIATE HOME ───────────────────────────────────────────────────────────
+function setAssocDrill(type) {
+  state.assocDrill = (state.assocDrill === type) ? null : type;
+  const el = document.getElementById("assoc-drill-section");
+  if (el) el.innerHTML = renderAssocDrillTable();
+}
+
+function renderAssocDrillTable() {
+  const mine  = state.clients.filter(c => c.ay === state.filterAY);
+  const drill = state.assocDrill;
+  if (!drill) return "";
+
+  let list  = [];
+  let title = "";
+  let color = "var(--text-1)";
+
+  if      (drill === "all")      { list = mine;                                    title = "All Clients";        color = "var(--gold-light)"; }
+  else if (drill === "filed")    { list = mine.filter(c=>c.itrFiled);              title = "ITR Filed";          color = "#9999ff"; }
+  else if (drill === "unfiled")  { list = mine.filter(c=>!c.itrFiled);             title = "Yet to File";        color = "#7777dd"; }
+  else if (drill === "pending")  { list = mine.filter(c=>c.status==="Pending");    title = "Payment Pending";    color = "#ffcc66"; }
+  else if (drill === "partial")  { list = mine.filter(c=>c.status==="Partial");    title = "Partial Payment";    color = "#ffee99"; }
+  else if (drill === "received") { list = mine.filter(c=>c.status==="Received");   title = "Fee Received";       color = "#66ffaa"; }
+
+  const rows = list.map((c,i) => {
+    const itr = c.itrFiled
+      ? '<span class="itr-pill itr-filed">&#10003; Filed</span>'
+      : '<span class="itr-pill itr-unfiled">&#8987; Pending</span>';
+    const sc   = STATUS_COLORS[c.status]||STATUS_COLORS.Pending;
+    const pill = '<span class="status-pill" style="background:'+sc.bg+';color:'+sc.text+'">' +
+                 '<span class="status-dot" style="background:'+sc.dot+'">&#8203;</span>'+c.status+'</span>';
+    return '<tr>' +
+      '<td style="font-size:11px;color:var(--text-3)">'+(i+1)+'</td>' +
+      '<td class="td-name">'+c.name+'</td>' +
+      '<td class="td-pan">'+c.pan+'</td>' +
+      '<td style="font-size:12px;color:var(--text-3)">'+(c.mobile||'&#8212;')+'</td>' +
+      '<td style="font-size:11px;color:var(--text-3)">'+c.ay+'</td>' +
+      '<td>'+itr+'</td>' +
+      '<td style="font-size:11px;color:var(--text-3)">'+(c.remarks||'&#8212;')+'</td>' +
+      '<td><button class="btn btn-sm btn-outline" onclick="dashEdit('+c.id+')">&#9998;</button></td>' +
+      '</tr>';
+  }).join('');
+
+  return (
+    '<div style="margin:16px 0 8px;display:flex;align-items:center;gap:10px">' +
+      '<span style="font-size:13px;font-weight:600;color:'+color+'">'+title+' ('+list.length+')</span>' +
+      '<button class="btn btn-sm btn-outline" onclick="setAssocDrill(null)" style="margin-left:auto;font-size:11px">&#10005; Close</button>' +
+    '</div>' +
+    '<div class="table-wrap"><table>' +
+      '<thead><tr><th>#</th><th>Name</th><th>PAN</th><th>Mobile</th><th>AY</th><th>ITR Status</th><th>Remarks</th><th>Edit</th></tr></thead>' +
+      '<tbody>'+(rows||'<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-3)">No clients in this category</td></tr>')+'</tbody>' +
+    '</table></div>'
+  );
+}
+
 function renderAssocHome() {
   const mine = state.clients.filter(c => c.ay === state.filterAY);
   const filed = mine.filter(c=>c.itrFiled).length;
@@ -535,12 +588,12 @@ function renderAssocHome() {
       <div><h2>Welcome, Associate</h2><p>Add new clients, update payment details, and import client lists. Fee summaries are accessible to the CA only.</p></div>
     </div>
     <div class="assoc-stats" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">
-      <div class="assoc-stat"><div class="assoc-stat-label">Total Clients</div><div class="assoc-stat-value">${mine.length}</div><div class="assoc-stat-sub">${state.filterAY}</div></div>
-      <div class="assoc-stat" style="border-left:2px solid #9999ff"><div class="assoc-stat-label">ITR Filed</div><div class="assoc-stat-value" style="color:#9999ff">${filed}</div><div class="assoc-stat-sub">Returns submitted</div></div>
-      <div class="assoc-stat" style="border-left:2px solid #5555ff"><div class="assoc-stat-label">Yet to File</div><div class="assoc-stat-value" style="color:#7777dd">${unfiled}</div><div class="assoc-stat-sub">Filing pending</div></div>
-      <div class="assoc-stat" style="border-left:2px solid #ffaa00"><div class="assoc-stat-label">Payment Pending</div><div class="assoc-stat-value" style="color:#ffcc66">${pending}</div><div class="assoc-stat-sub">Needs update</div></div>
-      <div class="assoc-stat" style="border-left:2px solid #ffcc00"><div class="assoc-stat-label">Partial Payment</div><div class="assoc-stat-value" style="color:#ffee99">${partial}</div><div class="assoc-stat-sub">Balance due</div></div>
-      <div class="assoc-stat" style="border-left:2px solid #00cc66"><div class="assoc-stat-label">Fee Received</div><div class="assoc-stat-value" style="color:#66ffaa">${received}</div><div class="assoc-stat-sub">Payment complete</div></div>
+      <div class="assoc-stat" style="cursor:pointer" onclick="setAssocDrill('all')"><div class="assoc-stat-label">Total Clients</div><div class="assoc-stat-value">${mine.length}</div><div class="assoc-stat-sub">Click to view &#8599;</div></div>
+      <div class="assoc-stat" style="border-left:2px solid #9999ff;cursor:pointer" onclick="setAssocDrill('filed')"><div class="assoc-stat-label">ITR Filed</div><div class="assoc-stat-value" style="color:#9999ff">${filed}</div><div class="assoc-stat-sub">Click to view &#8599;</div></div>
+      <div class="assoc-stat" style="border-left:2px solid #5555ff;cursor:pointer" onclick="setAssocDrill('unfiled')"><div class="assoc-stat-label">Yet to File</div><div class="assoc-stat-value" style="color:#7777dd">${unfiled}</div><div class="assoc-stat-sub">Click to view &#8599;</div></div>
+      <div class="assoc-stat" style="border-left:2px solid #ffaa00;cursor:pointer" onclick="setAssocDrill('pending')"><div class="assoc-stat-label">Payment Pending</div><div class="assoc-stat-value" style="color:#ffcc66">${pending}</div><div class="assoc-stat-sub">Click to view &#8599;</div></div>
+      <div class="assoc-stat" style="border-left:2px solid #ffcc00;cursor:pointer" onclick="setAssocDrill('partial')"><div class="assoc-stat-label">Partial Payment</div><div class="assoc-stat-value" style="color:#ffee99">${partial}</div><div class="assoc-stat-sub">Click to view &#8599;</div></div>
+      <div class="assoc-stat" style="border-left:2px solid #00cc66;cursor:pointer" onclick="setAssocDrill('received')"><div class="assoc-stat-label">Fee Received</div><div class="assoc-stat-value" style="color:#66ffaa">${received}</div><div class="assoc-stat-sub">Click to view &#8599;</div></div>
     </div>
     <div class="filing-overview"><div class="filing-overview-title">📊 Progress Overview — ${state.filterAY}</div>
       <div class="filing-dual">
@@ -602,13 +655,13 @@ function renderCADashboard(clients) {
 
   return `<div class="fade-in">
     <div class="stat-grid" style="grid-template-columns:repeat(3,1fr)">
-      <div class="stat-card gold"><div class="stat-label">Total Clients</div><div class="stat-value">${clients.length}</div><div class="stat-sub">${state.filterAY}</div><div class="stat-icon" style="font-size:40px;opacity:.1">👥</div></div>
-      <div class="stat-card" style="border-top:none"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#9999ff,transparent)"></div><div class="stat-label">ITR Filed</div><div class="stat-value" style="color:#9999ff">${itrFiled}</div><div class="stat-sub">Click to see list</div></div>
-      <div class="stat-card" style="border-top:none"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#5555ff,transparent)"></div><div class="stat-label">Yet to File</div><div class="stat-value" style="color:#7777dd">${itrUnfiled}</div><div class="stat-sub">Click to see list</div></div>
-      <div class="stat-card green"><div class="stat-label">Fees Collected</div><div class="stat-value" style="font-size:20px">${fmt(received)}</div><div class="stat-sub">${pct}% of total billed</div><div class="stat-icon" style="font-size:40px;opacity:.1">₹</div></div>
-      <div class="stat-card" style="border-top:none;position:relative"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#ff4444,transparent)"></div><div class="stat-label">🔴 Filed — Fee Pending</div><div class="stat-value" style="font-size:20px;color:#ff7b7b">${fmt(billable.filter(c=>c.itrFiled&&c.status!=="Received").reduce((s,c)=>s+c.feeCharged-c.amountReceived,0))}</div><div class="stat-sub" style="color:#ff9999">${billable.filter(c=>c.itrFiled&&c.status!=="Received").length} clients — urgent</div></div>
-      <div class="stat-card" style="border-top:none;position:relative"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#ffaa00,transparent)"></div><div class="stat-label">🟡 Not Filed — Fee Pending</div><div class="stat-value" style="font-size:20px;color:#ffcc66">${fmt(billable.filter(c=>!c.itrFiled&&c.status!=="Received").reduce((s,c)=>s+c.feeCharged-c.amountReceived,0))}</div><div class="stat-sub" style="color:#ffdd88">${billable.filter(c=>!c.itrFiled&&c.status!=="Received").length} clients — expected</div></div>
-      <div class="stat-card gold"><div class="stat-label">Total Billed</div><div class="stat-value" style="font-size:20px">${fmt(billed)}</div><div class="stat-sub">${waived > 0 ? waived+" waived" : "All clients"}</div><div class="stat-icon" style="font-size:40px;opacity:.1">⊞</div></div>
+      <div class="stat-card gold" style="cursor:pointer" onclick="setDashDrill('all')"><div class="stat-label">Total Clients</div><div class="stat-value">${clients.length}</div><div class="stat-sub">${state.filterAY} &middot; click to view</div><div class="stat-icon" style="font-size:40px;opacity:.1">&#128101;</div></div>
+      <div class="stat-card" style="cursor:pointer;position:relative" onclick="setDashDrill('filed')"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#9999ff,transparent)"></div><div class="stat-label">ITR Filed</div><div class="stat-value" style="color:#9999ff">${itrFiled}</div><div class="stat-sub">Click to see list</div></div>
+      <div class="stat-card" style="cursor:pointer;position:relative" onclick="setDashDrill('unfiled')"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#5555ff,transparent)"></div><div class="stat-label">Yet to File</div><div class="stat-value" style="color:#7777dd">${itrUnfiled}</div><div class="stat-sub">Click to see list</div></div>
+      <div class="stat-card green" style="cursor:pointer" onclick="setDashDrill('collected')"><div class="stat-label">Fees Collected</div><div class="stat-value" style="font-size:20px">${fmt(received)}</div><div class="stat-sub">${pct}% of total &middot; click to view</div><div class="stat-icon" style="font-size:40px;opacity:.1">&#8377;</div></div>
+      <div class="stat-card" style="cursor:pointer;position:relative" onclick="setDashDrill('filed-pending')"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#ff4444,transparent)"></div><div class="stat-label">&#128308; Filed &#8212; Fee Pending</div><div class="stat-value" style="font-size:20px;color:#ff7b7b">${fmt(billable.filter(c=>c.itrFiled&&c.status!=="Received").reduce((s,c)=>s+c.feeCharged-c.amountReceived,0))}</div><div class="stat-sub" style="color:#ff9999">${billable.filter(c=>c.itrFiled&&c.status!=="Received").length} clients &middot; click to view</div></div>
+      <div class="stat-card" style="cursor:pointer;position:relative" onclick="setDashDrill('unfiled-pending')"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#ffaa00,transparent)"></div><div class="stat-label">&#128993; Not Filed &#8212; Fee Pending</div><div class="stat-value" style="font-size:20px;color:#ffcc66">${fmt(billable.filter(c=>!c.itrFiled&&c.status!=="Received").reduce((s,c)=>s+c.feeCharged-c.amountReceived,0))}</div><div class="stat-sub" style="color:#ffdd88">${billable.filter(c=>!c.itrFiled&&c.status!=="Received").length} clients &middot; click to view</div></div>
+      <div class="stat-card gold" style="cursor:pointer" onclick="setDashDrill('billed')"><div class="stat-label">Total Billed</div><div class="stat-value" style="font-size:20px">${fmt(billed)}</div><div class="stat-sub">${waived > 0 ? waived+" waived" : "All clients"} &middot; click to view</div><div class="stat-icon" style="font-size:40px;opacity:.1">&#8862;</div></div>
     </div>
     <div class="filing-overview" style="margin-top:20px">
       <div class="filing-overview-title">📊 Progress Overview</div>
@@ -954,7 +1007,7 @@ function renderModal() {
             <input type="hidden" id="f-itrFiled" value="${v("itrFiled")??"false"}"/>
           </div>
           <div class="form-group"><label class="form-label">ITR Form <span class="opt-tag">optional</span></label><select class="form-select" id="f-itrForm">${formOpts}</select></div>
-          <div class="form-group"><label class="form-label">Filing Date <span class="opt-tag">if filed</span></label><input class="form-input" id="f-filingDate" type="date" value="${v("filingDate")}"/></div>
+          <div class="form-group"><label class="form-label">Filing Date <span class="opt-tag">if filed</span></label><input class="form-input" id="f-filingDate" type="date" value="${v("filingDate")}" max="${today()}"/></div>
           <div class="form-section-label">💰 Fee & Payment</div>
           <div class="form-group" style="grid-column:1/-1"><label class="form-label">Fee Waived?</label>
             <div style="display:flex;gap:8px">
@@ -965,7 +1018,7 @@ function renderModal() {
           </div>
           <div class="form-group"><label class="form-label">Fee Charged (₹)</label><input class="form-input" id="f-feeCharged" type="number" value="${v("feeCharged")||""}" placeholder="0" ${v("feeWaived")?"disabled style='opacity:0.4'":""}/></div>
           <div class="form-group"><label class="form-label">Amount Received (₹)</label><input class="form-input" id="f-amtRcv" type="number" value="${v("amountReceived")||""}" placeholder="0" ${v("feeWaived")?"disabled style='opacity:0.4'":""}/></div>
-          <div class="form-group"><label class="form-label">Payment Date</label><input class="form-input" id="f-payDate" type="date" value="${v("paymentDate")}"/></div>
+          <div class="form-group"><label class="form-label">Payment Date</label><input class="form-input" id="f-payDate" type="date" value="${v("paymentDate")}" max="${today()}"/></div>
           <div class="form-group"><label class="form-label">Payment Mode</label><select class="form-select" id="f-payMode">${modeOpts}</select></div>
           <div class="form-group" style="grid-column:1/-1"><label class="form-label">Remarks <span class="opt-tag">optional</span></label><textarea class="form-textarea" id="f-remarks" placeholder="Notes about payment...">${v("remarks")}</textarea></div>
         </div>
@@ -999,6 +1052,11 @@ async function saveModalClient() {
   const name = document.getElementById("f-name").value.trim();
   const pan  = document.getElementById("f-pan").value.trim().toUpperCase();
   if (!name || !pan) { alert("Client name and PAN are required."); return; }
+  const todayStr = today();
+  const filingDt = document.getElementById("f-filingDate").value;
+  const payDt    = document.getElementById("f-payDate").value;
+  if (filingDt && filingDt > todayStr) { alert("Filing date cannot be a future date."); return; }
+  if (payDt    && payDt    > todayStr) { alert("Payment date cannot be a future date."); return; }
 
   const waived = document.getElementById("f-feeWaived").value === "true";
   const fee    = waived ? 0 : parseFloat(document.getElementById("f-feeCharged").value)||0;
