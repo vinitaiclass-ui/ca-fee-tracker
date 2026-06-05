@@ -485,7 +485,7 @@ function renderApp() {
 }
 
 function goPage(p) { state.page = p; renderApp(); }
-function setAY(ay) { state.filterAY = ay; renderApp(); }
+function setAY(ay) { state.filterAY = ay; state.dashDrill = null; renderApp(); }
 function signOut() { state.role=null; state.page="home"; render(); }
 
 // ─── PAGE ROUTER ─────────────────────────────────────────────────────────────
@@ -573,6 +573,8 @@ function renderAssocHome() {
 
 // ─── CA DASHBOARD ─────────────────────────────────────────────────────────────
 function renderCADashboard(clients) {
+  // drillFilter stored in state for dashboard drill-down
+  if (!state.dashDrill) state.dashDrill = null;
   const billable  = clients.filter(c=>!c.feeWaived);
   const billed    = billable.reduce((s,c)=>s+c.feeCharged,0);
   const received  = billable.reduce((s,c)=>s+c.amountReceived,0);
@@ -623,11 +625,9 @@ function renderCADashboard(clients) {
         </div>
       </div>
     </div>
-    <div style="margin:16px 0 8px;font-size:12px;color:var(--text-3)">⚠ Top Outstanding Payments</div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Client Name</th><th>PAN</th><th>Mobile</th><th>ITR</th><th>Fee</th><th>Received</th><th>Balance</th><th>Status</th><th>Edit</th></tr></thead>
-      <tbody>${urgent.length ? urgentRows : '<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text-3)">🎉 All fees collected!</td></tr>'}</tbody>
-    </table></div>
+    <div id="dash-drill-section">
+      ${renderDashDrill(clients, billable, urgentRows, urgent)}
+    </div>
   </div>`;
 }
 
@@ -727,6 +727,91 @@ function renderMasterPage() {
 }
 
 // ─── REPORTS ──────────────────────────────────────────────────────────────────
+function setDashDrill(type) {
+  state.dashDrill = (state.dashDrill === type) ? null : type;
+  const el = document.getElementById("dash-drill-section");
+  if (el) {
+    const clients  = state.clients.filter(c => c.ay === state.filterAY);
+    const billable = clients.filter(c => !c.feeWaived);
+    el.innerHTML   = renderDashDrill(clients, billable);
+  }
+}
+
+function dashEdit(id) {
+  const c = state.clients.find(x => String(x.id) === String(id));
+  if (c) openModal(c);
+}
+
+function makeDrillRow(c, i) {
+  const bal  = c.feeCharged - c.amountReceived;
+  const sc   = STATUS_COLORS[c.status] || STATUS_COLORS.Pending;
+  const pill = '<span class="status-pill" style="background:'+sc.bg+';color:'+sc.text+'">' +
+               '<span class="status-dot" style="background:'+sc.dot+'">&#8203;</span>'+c.status+'</span>';
+  const itr  = c.itrFiled
+    ? '<span class="itr-pill itr-filed">&#10003; Filed</span>'
+    : '<span class="itr-pill itr-unfiled">&#8987; Pending</span>';
+  return '<tr>' +
+    '<td style="font-size:11px;color:var(--text-3)">'+(i+1)+'</td>' +
+    '<td class="td-name">'+c.name+'</td>' +
+    '<td class="td-pan">'+c.pan+'</td>' +
+    '<td style="font-size:12px;color:var(--text-3)">'+(c.mobile||'&#8212;')+'</td>' +
+    '<td>'+itr+'</td>' +
+    '<td class="td-amount">'+fmt(c.feeCharged)+'</td>' +
+    '<td class="td-amount" style="color:#66ffaa">'+fmt(c.amountReceived)+'</td>' +
+    '<td class="td-amount" style="color:#ff7b7b">'+fmt(bal)+'</td>' +
+    '<td>'+pill+'</td>' +
+    '<td><button class="btn btn-sm btn-outline" onclick="dashEdit('+c.id+')">&#9998;</button></td>' +
+    '</tr>';
+}
+
+function renderDashDrill(clients, billable) {
+  const drill = state.dashDrill;
+  const thead = '<thead><tr><th>#</th><th>Name</th><th>PAN</th><th>Mobile</th>' +
+                '<th>ITR</th><th>Fee</th><th>Received</th><th>Balance</th><th>Status</th><th>Edit</th></tr></thead>';
+
+  let drillList  = [];
+  let drillTitle = "";
+  let drillColor = "var(--text-1)";
+
+  if      (drill === "all")            { drillList = clients;                                                     drillTitle = "All Clients";                drillColor = "var(--gold-light)"; }
+  else if (drill === "filed")          { drillList = clients.filter(c=>c.itrFiled);                               drillTitle = "ITR Filed Clients";           drillColor = "#9999ff"; }
+  else if (drill === "unfiled")        { drillList = clients.filter(c=>!c.itrFiled);                              drillTitle = "Yet to File ITR";             drillColor = "#7777dd"; }
+  else if (drill === "collected")      { drillList = billable.filter(c=>c.amountReceived>0);                      drillTitle = "Fees Collected";              drillColor = "#66ffaa"; }
+  else if (drill === "filed-pending")  { drillList = billable.filter(c=>c.itrFiled&&c.status!=="Received");       drillTitle = "ITR Filed &#8212; Fee Pending";    drillColor = "#ff7b7b"; }
+  else if (drill === "unfiled-pending"){ drillList = billable.filter(c=>!c.itrFiled&&c.status!=="Received");      drillTitle = "Not Filed &#8212; Fee Pending";     drillColor = "#ffcc66"; }
+  else if (drill === "billed")         { drillList = billable;                                                    drillTitle = "All Billed Clients";          drillColor = "var(--gold-light)"; }
+
+  if (drill) {
+    const rows = drillList.length
+      ? drillList.map(makeDrillRow).join("")
+      : '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--text-3)">No clients in this category</td></tr>';
+    return (
+      '<div style="margin:16px 0 8px;display:flex;align-items:center;gap:10px">' +
+        '<span style="font-size:13px;font-weight:600;color:'+drillColor+'">'+drillTitle+' ('+drillList.length+')</span>' +
+        '<button class="btn btn-sm btn-outline" onclick="setDashDrill(null)" style="margin-left:auto;font-size:11px">&#10005; Close</button>' +
+      '</div>' +
+      '<div class="table-wrap"><table>'+thead+'<tbody>'+rows+'</tbody></table></div>'
+    );
+  }
+
+  // Default — top outstanding
+  const urgent = billable
+    .filter(c => c.status !== "Received")
+    .sort((a,b) => (b.feeCharged-b.amountReceived) - (a.feeCharged-a.amountReceived))
+    .slice(0, 10);
+  const urgentRows = urgent.length
+    ? urgent.map(makeDrillRow).join("")
+    : '<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--text-3)">&#127881; All fees collected!</td></tr>';
+  return (
+    '<div style="margin:16px 0 8px;font-size:12px;color:var(--text-3)">&#9888; Top Outstanding &#8212; click any card above to drill down</div>' +
+    '<div class="table-wrap"><table>' +
+      '<thead><tr><th>Client Name</th><th>PAN</th><th>Mobile</th><th>ITR</th>' +
+      '<th>Fee</th><th>Received</th><th>Balance</th><th>Status</th><th>Edit</th></tr></thead>' +
+      '<tbody>'+urgentRows+'</tbody>' +
+    '</table></div>'
+  );
+}
+
 function renderReports(clients) {
   const billable = clients.filter(c=>!c.feeWaived);
   const billed   = billable.reduce((s,c)=>s+c.feeCharged,0);
