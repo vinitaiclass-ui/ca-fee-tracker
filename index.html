@@ -293,6 +293,7 @@ function normalize(c) {
   return {
     ...c,
     id:             c.id || Date.now() + Math.random(),
+    openingDue:     Number(c.openingDue)     || 0,
     feeCharged:     Number(c.feeCharged)     || 0,
     amountReceived: Number(c.amountReceived) || 0,
     itrFiled:  c.itrFiled  === true || c.itrFiled  === "TRUE"  || c.itrFiled  === "true",
@@ -333,11 +334,18 @@ function myClients() {
   return state.clients.filter(c => (c.partner||"vinit") === state.partner);
 }
 const today = () => new Date().toISOString().split("T")[0];
-function calcStatus(fee, rcv, waived) {
+function calcStatus(fee, rcv, waived, opening) {
+  opening = opening || 0;
   if (waived) return "Received";
-  if (!rcv || rcv <= 0) return "Pending";
-  if (rcv >= fee) return "Received";
+  const totalBill = (opening||0) + (fee||0);
+  if (!rcv || rcv <= 0) return totalBill > 0 ? "Pending" : "Received";
+  if (rcv >= totalBill) return "Received";
   return "Partial";
+}
+// Total outstanding = opening due + this year fee - received
+function totalDue(c) {
+  if (c.feeWaived) return 0;
+  return (c.openingDue||0) + (c.feeCharged||0) - (c.amountReceived||0);
 }
 function statusPill(status) {
   const sc = STATUS_COLORS[status] || STATUS_COLORS.Pending;
@@ -689,7 +697,7 @@ function renderCADashboard(clients) {
   // drillFilter stored in state for dashboard drill-down
   if (!state.dashDrill) state.dashDrill = null;
   const billable  = clients.filter(c=>!c.feeWaived);
-  const billed    = billable.reduce((s,c)=>s+c.feeCharged,0);
+  const billed    = billable.reduce((s,c)=>s+(c.openingDue||0)+c.feeCharged,0);
   const received  = billable.reduce((s,c)=>s+c.amountReceived,0);
   const itrFiled  = clients.filter(c=>c.itrFiled).length;
   const itrUnfiled= clients.filter(c=>!c.itrFiled).length;
@@ -719,8 +727,8 @@ function renderCADashboard(clients) {
       <div class="stat-card" style="cursor:pointer;position:relative" onclick="setDashDrill('filed')"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#9999ff,transparent)"></div><div class="stat-label">ITR Filed</div><div class="stat-value" style="color:#9999ff">${itrFiled}</div><div class="stat-sub">Click to see list</div></div>
       <div class="stat-card" style="cursor:pointer;position:relative" onclick="setDashDrill('unfiled')"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#5555ff,transparent)"></div><div class="stat-label">Yet to File</div><div class="stat-value" style="color:#7777dd">${itrUnfiled}</div><div class="stat-sub">Click to see list</div></div>
       <div class="stat-card green" style="cursor:pointer" onclick="setDashDrill('collected')"><div class="stat-label">Fees Collected</div><div class="stat-value" style="font-size:20px">${fmt(received)}</div><div class="stat-sub">${pct}% of total &middot; click to view</div><div class="stat-icon" style="font-size:40px;opacity:.1">&#8377;</div></div>
-      <div class="stat-card" style="cursor:pointer;position:relative" onclick="setDashDrill('filed-pending')"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#ff4444,transparent)"></div><div class="stat-label">&#128308; Filed &#8212; Fee Pending</div><div class="stat-value" style="font-size:20px;color:#ff7b7b">${fmt(billable.filter(c=>c.itrFiled&&c.status!=="Received").reduce((s,c)=>s+c.feeCharged-c.amountReceived,0))}</div><div class="stat-sub" style="color:#ff9999">${billable.filter(c=>c.itrFiled&&c.status!=="Received").length} clients &middot; click to view</div></div>
-      <div class="stat-card" style="cursor:pointer;position:relative" onclick="setDashDrill('unfiled-pending')"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#ffaa00,transparent)"></div><div class="stat-label">&#128993; Not Filed &#8212; Fee Pending</div><div class="stat-value" style="font-size:20px;color:#ffcc66">${fmt(billable.filter(c=>!c.itrFiled&&c.status!=="Received").reduce((s,c)=>s+c.feeCharged-c.amountReceived,0))}</div><div class="stat-sub" style="color:#ffdd88">${billable.filter(c=>!c.itrFiled&&c.status!=="Received").length} clients &middot; click to view</div></div>
+      <div class="stat-card" style="cursor:pointer;position:relative" onclick="setDashDrill('filed-pending')"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#ff4444,transparent)"></div><div class="stat-label">&#128308; Filed &#8212; Fee Pending</div><div class="stat-value" style="font-size:20px;color:#ff7b7b">${fmt(billable.filter(c=>c.itrFiled&&c.status!=="Received").reduce((s,c)=>s+totalDue(c),0))}</div><div class="stat-sub" style="color:#ff9999">${billable.filter(c=>c.itrFiled&&c.status!=="Received").length} clients &middot; click to view</div></div>
+      <div class="stat-card" style="cursor:pointer;position:relative" onclick="setDashDrill('unfiled-pending')"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#ffaa00,transparent)"></div><div class="stat-label">&#128993; Not Filed &#8212; Fee Pending</div><div class="stat-value" style="font-size:20px;color:#ffcc66">${fmt(billable.filter(c=>!c.itrFiled&&c.status!=="Received").reduce((s,c)=>s+totalDue(c),0))}</div><div class="stat-sub" style="color:#ffdd88">${billable.filter(c=>!c.itrFiled&&c.status!=="Received").length} clients &middot; click to view</div></div>
       <div class="stat-card gold" style="cursor:pointer" onclick="setDashDrill('billed')"><div class="stat-label">Total Billed</div><div class="stat-value" style="font-size:20px">${fmt(billed)}</div><div class="stat-sub">${waived > 0 ? waived+" waived" : "All clients"} &middot; click to view</div><div class="stat-icon" style="font-size:40px;opacity:.1">&#8862;</div></div>
     </div>
     <div class="filing-overview" style="margin-top:20px">
@@ -761,7 +769,7 @@ function renderClientsPage() {
   });
 
   const rows = list.map((c,i) => {
-    const bal = c.feeCharged - c.amountReceived;
+    const due = totalDue(c);
     return `<tr class="${c.feeWaived?"waived-row":""}">
       <td style="font-size:12px;color:var(--text-3)">${i+1}</td>
       <td class="td-name">${c.name}${c.feeWaived?'<span class="waived-pill" style="margin-left:6px;font-size:10px">🎁</span>':""}</td>
@@ -770,10 +778,10 @@ function renderClientsPage() {
       <td style="font-size:11px;color:var(--text-3)">${c.ay}</td>
       <td>${itrPill(c.itrFiled)}</td>
       <td><span style="font-size:11px;padding:2px 8px;background:var(--navy-3);border-radius:4px">${c.itrForm||"—"}</span></td>
-      <td style="font-size:12px;color:var(--text-3)">${c.filingDate||"—"}</td>
+      <td class="td-amount">${isCA ? (c.feeWaived?"—":(c.openingDue>0?"<span style='color:#ffaa66'>"+fmt(c.openingDue)+"</span>":"—")) : "—"}</td>
       <td class="td-amount">${isCA ? (c.feeWaived?"<span class='waived-pill'>🎁</span>":fmt(c.feeCharged)) : "—"}</td>
       <td class="td-amount" style="color:#66ffaa">${isCA ? (c.feeWaived?"—":fmt(c.amountReceived)) : "—"}</td>
-      <td class="td-amount" style="color:${bal>0&&!c.feeWaived?"#ff7b7b":"#66ffaa"}">${isCA ? (c.feeWaived?"—":fmt(bal)) : "—"}</td>
+      <td class="td-amount" style="color:${due>0&&!c.feeWaived?"#ff7b7b":"#66ffaa"};font-weight:600">${isCA ? (c.feeWaived?"—":fmt(due)) : "—"}</td>
       <td>${statusPill(c.status)}</td>
       <td><button class="btn btn-sm btn-outline" onclick="openModal(${JSON.stringify(c).replace(/"/g,"&quot;")})">✎</button></td>
     </tr>`;}).join("");
@@ -792,7 +800,7 @@ function renderClientsPage() {
       <span style="font-size:11px;color:var(--text-3)">${list.length} records</span>
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th>#</th><th>Client Name</th><th>PAN</th><th>Mobile</th><th>AY</th><th>ITR Status</th><th>Form</th><th>Filed On</th><th>Fee</th><th>Received</th><th>Balance</th><th>Status</th><th>Edit</th></tr></thead>
+      <thead><tr><th>#</th><th>Client Name</th><th>PAN</th><th>Mobile</th><th>AY</th><th>ITR Status</th><th>Form</th><th>Opening Due</th><th>This Yr Fee</th><th>Received</th><th>Total Due</th><th>Status</th><th>Edit</th></tr></thead>
       <tbody>${rows||'<tr><td colspan="13" style="text-align:center;padding:30px;color:var(--text-3)">No records found</td></tr>'}</tbody>
     </table></div>
     <div style="font-size:11px;color:var(--text-3);margin-top:8px;text-align:right">${list.length} of ${myClients().length} total records</div>
@@ -826,6 +834,7 @@ function renderMasterPage() {
         <div class="master-card-mobile">${m.mobile||"—"}</div>
         <div class="master-card-meta">${ayChips}</div>
         ${isCA ? `<div style="text-align:right"><div style="font-size:11px;color:var(--text-3)">${m.filings.length} filing(s)</div>${outstanding>0?`<div style="font-size:12px;color:#ff9999;font-family:'DM Mono',monospace">${fmt(outstanding)} due</div>`:'<div style="font-size:12px;color:#66ffaa">✓ Clear</div>'}</div>` : ""}
+        <button class="btn btn-sm btn-outline" onclick="addYearForClient('${m.pan}')" style="white-space:nowrap">+ Add Year</button>
       </div>
     </div>`;}).join("");
 
@@ -861,22 +870,24 @@ function dashEdit(id) {
 }
 
 function makeDrillRow(c, i) {
-  const bal  = c.feeCharged - c.amountReceived;
+  const due  = totalDue(c);
   const sc   = STATUS_COLORS[c.status] || STATUS_COLORS.Pending;
   const pill = '<span class="status-pill" style="background:'+sc.bg+';color:'+sc.text+'">' +
                '<span class="status-dot" style="background:'+sc.dot+'">&#8203;</span>'+c.status+'</span>';
   const itr  = c.itrFiled
     ? '<span class="itr-pill itr-filed">&#10003; Filed</span>'
     : '<span class="itr-pill itr-unfiled">&#8987; Pending</span>';
+  const opn  = c.openingDue>0 ? '<span style="color:#ffaa66">'+fmt(c.openingDue)+'</span>' : '&#8212;';
   return '<tr>' +
     '<td style="font-size:11px;color:var(--text-3)">'+(i+1)+'</td>' +
     '<td class="td-name">'+c.name+'</td>' +
     '<td class="td-pan">'+c.pan+'</td>' +
     '<td style="font-size:12px;color:var(--text-3)">'+(c.mobile||'&#8212;')+'</td>' +
     '<td>'+itr+'</td>' +
+    '<td class="td-amount">'+opn+'</td>' +
     '<td class="td-amount">'+fmt(c.feeCharged)+'</td>' +
     '<td class="td-amount" style="color:#66ffaa">'+fmt(c.amountReceived)+'</td>' +
-    '<td class="td-amount" style="color:#ff7b7b">'+fmt(bal)+'</td>' +
+    '<td class="td-amount" style="color:'+(due>0?'#ff7b7b':'#66ffaa')+';font-weight:600">'+fmt(due)+'</td>' +
     '<td>'+pill+'</td>' +
     '<td><button class="btn btn-sm btn-outline" onclick="dashEdit('+c.id+')">&#9998;</button></td>' +
     '</tr>';
@@ -885,7 +896,7 @@ function makeDrillRow(c, i) {
 function renderDashDrill(clients, billable) {
   const drill = state.dashDrill;
   const thead = '<thead><tr><th>#</th><th>Name</th><th>PAN</th><th>Mobile</th>' +
-                '<th>ITR</th><th>Fee</th><th>Received</th><th>Balance</th><th>Status</th><th>Edit</th></tr></thead>';
+                '<th>ITR</th><th>Opening Due</th><th>This Yr Fee</th><th>Received</th><th>Total Due</th><th>Status</th><th>Edit</th></tr></thead>';
 
   let drillList  = [];
   let drillTitle = "";
@@ -903,7 +914,7 @@ function renderDashDrill(clients, billable) {
   if (drill) {
     const rows = drillList.length
       ? drillList.map(makeDrillRow).join("")
-      : '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--text-3)">No clients in this category</td></tr>';
+      : '<tr><td colspan="11" style="text-align:center;padding:24px;color:var(--text-3)">No clients in this category</td></tr>';
     return (
       '<div style="margin:16px 0 8px;display:flex;align-items:center;gap:10px">' +
         '<span style="font-size:13px;font-weight:600;color:'+drillColor+'">'+drillTitle+' ('+drillList.length+')</span>' +
@@ -920,12 +931,12 @@ function renderDashDrill(clients, billable) {
     .slice(0, 10);
   const urgentRows = urgent.length
     ? urgent.map(makeDrillRow).join("")
-    : '<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--text-3)">&#127881; All fees collected!</td></tr>';
+    : '<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--text-3)">&#127881; All fees collected!</td></tr>';
   return (
     '<div style="margin:16px 0 8px;font-size:12px;color:var(--text-3)">&#9888; Top Outstanding &#8212; click any card above to drill down</div>' +
     '<div class="table-wrap"><table>' +
-      '<thead><tr><th>Client Name</th><th>PAN</th><th>Mobile</th><th>ITR</th>' +
-      '<th>Fee</th><th>Received</th><th>Balance</th><th>Status</th><th>Edit</th></tr></thead>' +
+      '<thead><tr><th>#</th><th>Client Name</th><th>PAN</th><th>Mobile</th><th>ITR</th>' +
+      '<th>Opening Due</th><th>This Yr Fee</th><th>Received</th><th>Total Due</th><th>Status</th><th>Edit</th></tr></thead>' +
       '<tbody>'+urgentRows+'</tbody>' +
     '</table></div>'
   );
@@ -933,7 +944,7 @@ function renderDashDrill(clients, billable) {
 
 function renderReports(clients) {
   const billable = clients.filter(c=>!c.feeWaived);
-  const billed   = billable.reduce((s,c)=>s+c.feeCharged,0);
+  const billed   = billable.reduce((s,c)=>s+(c.openingDue||0)+c.feeCharged,0);
   const received = billable.reduce((s,c)=>s+c.amountReceived,0);
   const pendingFiled   = billable.filter(c=>c.itrFiled  && c.status!=="Received").sort((a,b)=>(b.feeCharged-b.amountReceived)-(a.feeCharged-a.amountReceived));
   const pendingUnfiled = billable.filter(c=>!c.itrFiled && c.status!=="Received").sort((a,b)=>(b.feeCharged-b.amountReceived)-(a.feeCharged-a.amountReceived));
@@ -945,7 +956,8 @@ function renderReports(clients) {
   const modeCards = byMode.map(r=>`<div style="background:var(--navy-3);border-radius:var(--radius);padding:12px 14px"><div style="font-size:11px;color:var(--text-3);margin-bottom:4px">${r.mode}</div><div style="font-size:14px;font-family:'DM Mono',monospace;color:#66ffaa">${fmt(r.rcv)}</div><div style="font-size:11px;color:var(--text-3);margin-top:2px">${r.count} payment(s)</div></div>`).join("");
 
   return `<div class="fade-in">
-    <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:16px">
+      <button class="btn btn-outline" onclick="carryForwardYear()" style="border-color:var(--gold-dim);color:var(--gold-light)">⏭ Carry Forward Dues to Next Year</button>
       <button class="btn btn-outline" onclick="exportCSV()">⬇ Export CSV</button>
     </div>
     <div class="report-grid">
@@ -965,26 +977,28 @@ function renderReports(clients) {
     ${(()=>{
       const sc2 = (st) => { const s=STATUS_COLORS[st]||STATUS_COLORS.Pending; return s; };
       const fmtRow = (c,i) => {
-        const bal = c.feeCharged - c.amountReceived;
+        const due = totalDue(c);
         const sc  = sc2(c.status);
         const pill= '<span class="status-pill" style="background:'+sc.bg+';color:'+sc.text+'">'+
                     '<span class="status-dot" style="background:'+sc.dot+'">&#8203;</span>'+c.status+'</span>';
+        const opn = c.openingDue>0 ? '<span style="color:#ffaa66">'+fmt(c.openingDue)+'</span>' : '&#8212;';
         return '<tr>'+
           '<td style="font-size:12px;color:var(--text-3)">'+(i+1)+'</td>'+
           '<td class="td-name">'+c.name+'</td>'+
           '<td class="td-pan">'+c.pan+'</td>'+
           '<td style="font-size:12px;color:var(--text-3)">'+(c.mobile||'&#8212;')+'</td>'+
           '<td style="font-size:11px;color:var(--text-3)">'+c.ay+'</td>'+
+          '<td class="td-amount">'+opn+'</td>'+
           '<td class="td-amount">'+fmt(c.feeCharged)+'</td>'+
           '<td class="td-amount" style="color:#66ffaa">'+fmt(c.amountReceived)+'</td>'+
-          '<td class="td-amount" style="color:#ff7b7b">'+fmt(bal)+'</td>'+
+          '<td class="td-amount" style="color:#ff7b7b;font-weight:600">'+fmt(due)+'</td>'+
           '<td>'+pill+'</td>'+
-          '<td style="font-size:11px;color:var(--text-3);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(c.remarks||'&#8212;')+'</td>'+
+          '<td style="font-size:11px;color:var(--text-3);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(c.remarks||'&#8212;')+'</td>'+
           '</tr>';
       };
-      const thead = '<thead><tr><th>#</th><th>Name</th><th>PAN</th><th>Mobile</th><th>AY</th><th>Fee</th><th>Received</th><th>Balance</th><th>Status</th><th>Remarks</th></tr></thead>';
-      const filedAmt   = pendingFiled.reduce((s,c)=>s+c.feeCharged-c.amountReceived,0);
-      const unfiledAmt = pendingUnfiled.reduce((s,c)=>s+c.feeCharged-c.amountReceived,0);
+      const thead = '<thead><tr><th>#</th><th>Name</th><th>PAN</th><th>Mobile</th><th>AY</th><th>Opening</th><th>This Yr Fee</th><th>Received</th><th>Total Due</th><th>Status</th><th>Remarks</th></tr></thead>';
+      const filedAmt   = pendingFiled.reduce((s,c)=>s+totalDue(c),0);
+      const unfiledAmt = pendingUnfiled.reduce((s,c)=>s+totalDue(c),0);
       const noFiled   = '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--text-3)">No pending fees for filed returns!</td></tr>';
       const noUnfiled = '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--text-3)">No pending fees for unfiled returns!</td></tr>';
       const filedRows   = pendingFiled.length   ? pendingFiled.map(fmtRow).join('')   : noFiled;
@@ -1022,6 +1036,24 @@ function renderImport() {
 }
 
 // ─── CLIENT MODAL ─────────────────────────────────────────────────────────────
+function addYearForClient(pan) {
+  pan = pan.toUpperCase();
+  const existing = myClients().filter(c => c.pan.toUpperCase() === pan);
+  if (existing.length === 0) { openModal(null); return; }
+  // Use most recent entry as template
+  const latest = existing.sort((a,b)=>b.ay.localeCompare(a.ay))[0];
+  const totalOutstanding = existing.reduce((s,c)=>s+totalDue(c),0);
+  // Pre-fill a NEW entry (no id) with client details
+  openModal({
+    pan: latest.pan,
+    name: latest.name,
+    mobile: latest.mobile,
+    openingDue: totalOutstanding,  // suggest carrying forward total outstanding
+    partner: latest.partner,
+    remarks: "",
+  });
+}
+
 function openModal(clientData) {
   if (typeof clientData === "string") {
     try { state.modalClient = JSON.parse(clientData.replace(/&quot;/g, '"')); }
@@ -1059,9 +1091,19 @@ function renderModal() {
         <div class="form-grid">
           <div class="form-section-label">Client Details</div>
           <div class="form-group"><label class="form-label">Client Name *</label><input class="form-input" id="f-name" value="${v("name")}" placeholder="Full name as per PAN"/></div>
-          <div class="form-group"><label class="form-label">PAN Number *</label><input class="form-input" id="f-pan" value="${v("pan")}" placeholder="ABCDE1234F" style="text-transform:uppercase"/></div>
+          <div class="form-group"><label class="form-label">PAN Number *</label><input class="form-input" id="f-pan" value="${v("pan")}" placeholder="ABCDE1234F" style="text-transform:uppercase" oninput="autofillFromPAN(this.value)"/><div id="pan-autofill-hint" style="font-size:10px;color:#66ffaa;margin-top:3px"></div></div>
           <div class="form-group"><label class="form-label">Mobile <span class="opt-tag">optional</span></label><input class="form-input" id="f-mobile" value="${v("mobile")}" placeholder="10-digit mobile"/></div>
-          <div class="form-group"><label class="form-label">Assessment Year</label><select class="form-select" id="f-ay">${ayOpts}</select></div>
+          <div class="form-group" style="grid-column:1/-1"><label class="form-label">Assessment Year(s) <span class="opt-tag">tick one or more</span></label>
+            <div id="f-ay-checks" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
+              ${AY_LIST.map(a=>{
+                const checked = (isNew ? (a===(v("ay")||"AY 2026-27")) : (v("ay")===a));
+                return '<label style="display:flex;align-items:center;gap:5px;padding:6px 10px;border:1px solid '+(checked?"var(--gold-dim)":"var(--border)")+';border-radius:var(--radius);background:'+(checked?"rgba(201,168,76,0.12)":"var(--navy-3)")+';cursor:pointer;font-size:12px;color:'+(checked?"var(--gold-light)":"var(--text-3)")+'">'+
+                  '<input type="checkbox" class="f-ay-check" value="'+a+'" '+(checked?"checked":"")+' '+(isNew?"":"disabled")+' onchange="this.parentElement.style.borderColor=this.checked?\'var(--gold-dim)\':\'var(--border)\';this.parentElement.style.background=this.checked?\'rgba(201,168,76,0.12)\':\'var(--navy-3)\';this.parentElement.style.color=this.checked?\'var(--gold-light)\':\'var(--text-3)\'"/>'+
+                  a+'</label>';
+              }).join("")}
+            </div>
+            ${isNew?'<div style="font-size:10px;color:var(--text-3);margin-top:5px">Tick multiple years to create entries for all of them at once (for back-year filing)</div>':'<div style="font-size:10px;color:var(--text-3);margin-top:5px">Year cannot be changed when editing</div>'}
+          </div>
           <div class="form-section-label">ITR Filing</div>
           <div class="form-group"><label class="form-label">ITR Filing Status</label>
             <div style="display:flex;gap:8px">
@@ -1082,7 +1124,8 @@ function renderModal() {
             </div>
             <input type="hidden" id="f-feeWaived" value="${v("feeWaived")??"false"}"/>
           </div>
-          <div class="form-group"><label class="form-label">Fee Charged (₹)</label><input class="form-input" id="f-feeCharged" type="number" value="${v("feeCharged")||""}" placeholder="0" ${v("feeWaived")?"disabled style='opacity:0.4'":""}/></div>
+          <div class="form-group"><label class="form-label">Opening Due (₹) <span class="opt-tag">previous years</span></label><input class="form-input" id="f-openingDue" type="number" value="${v("openingDue")||""}" placeholder="0" ${v("feeWaived")?"disabled style='opacity:0.4'":""}/></div>
+          <div class="form-group"><label class="form-label">Fee Charged (₹) <span class="opt-tag">this year</span></label><input class="form-input" id="f-feeCharged" type="number" value="${v("feeCharged")||""}" placeholder="0" ${v("feeWaived")?"disabled style='opacity:0.4'":""}/></div>
           <div class="form-group"><label class="form-label">Amount Received (₹)</label><input class="form-input" id="f-amtRcv" type="number" value="${v("amountReceived")||""}" placeholder="0" ${v("feeWaived")?"disabled style='opacity:0.4'":""}/></div>
           <div class="form-group"><label class="form-label">Payment Date</label><input class="form-input" id="f-payDate" type="date" value="${v("paymentDate")}" max="${today()}"/></div>
           <div class="form-group"><label class="form-label">Payment Mode</label><select class="form-select" id="f-payMode">${modeOpts}</select></div>
@@ -1104,14 +1147,37 @@ function setWaived(val) {
   document.getElementById("f-feeWaived").value = val;
   const feeInput = document.getElementById("f-feeCharged");
   const amtInput = document.getElementById("f-amtRcv");
+  const opnInput = document.getElementById("f-openingDue");
   if (feeInput) { feeInput.disabled = val; feeInput.style.opacity = val ? "0.4" : "1"; }
   if (amtInput) { amtInput.disabled = val; amtInput.style.opacity = val ? "0.4" : "1"; }
+  if (opnInput) { opnInput.disabled = val; opnInput.style.opacity = val ? "0.4" : "1"; }
   document.getElementById("waive-no").style.background  = !val ? "rgba(201,168,76,0.12)" : "var(--navy-3)";
   document.getElementById("waive-no").style.borderColor = !val ? "var(--gold-dim)" : "var(--border)";
   document.getElementById("waive-no").style.color       = !val ? "var(--gold-light)" : "var(--text-3)";
   document.getElementById("waive-yes").style.background  = val ? "rgba(68,102,68,0.25)" : "var(--navy-3)";
   document.getElementById("waive-yes").style.borderColor = val ? "#446644" : "var(--border)";
   document.getElementById("waive-yes").style.color       = val ? "#88cc88" : "var(--text-3)";
+}
+
+function autofillFromPAN(pan) {
+  pan = (pan||"").trim().toUpperCase();
+  const hint = document.getElementById("pan-autofill-hint");
+  if (pan.length < 10) { if(hint) hint.textContent=""; return; }
+  // Find an existing client (any year) with this PAN for this partner
+  const match = myClients().find(c => c.pan.toUpperCase() === pan);
+  if (match) {
+    const nameEl = document.getElementById("f-name");
+    const mobEl  = document.getElementById("f-mobile");
+    if (nameEl && !nameEl.value) nameEl.value = match.name;
+    if (mobEl  && !mobEl.value)  mobEl.value  = match.mobile || "";
+    // Also offer to carry their latest outstanding as opening due
+    const sameClient = myClients().filter(c=>c.pan.toUpperCase()===pan);
+    const latestDue  = sameClient.reduce((s,c)=>s+totalDue(c),0);
+    if (hint) hint.innerHTML = "&#10003; Existing client \u2014 details auto-filled" +
+      (latestDue>0 ? " &middot; <span style='color:#ffaa66'>Total outstanding: "+fmt(latestDue)+"</span>" : "");
+  } else {
+    if (hint) hint.textContent = "";
+  }
 }
 
 async function saveModalClient() {
@@ -1125,41 +1191,78 @@ async function saveModalClient() {
   if (payDt    && payDt    > todayStr) { alert("Payment date cannot be a future date."); return; }
 
   const waived = document.getElementById("f-feeWaived").value === "true";
+  const opening= waived ? 0 : parseFloat(document.getElementById("f-openingDue").value)||0;
   const fee    = waived ? 0 : parseFloat(document.getElementById("f-feeCharged").value)||0;
   const amt    = waived ? 0 : parseFloat(document.getElementById("f-amtRcv").value)||0;
+  const mobile = document.getElementById("f-mobile").value.trim();
+  const itrFiled  = document.getElementById("f-itrFiled").value === "true";
+  const itrForm   = document.getElementById("f-itrForm").value;
+  const filingDate= document.getElementById("f-filingDate").value;
+  const payDate   = document.getElementById("f-payDate").value;
+  const payMode   = document.getElementById("f-payMode").value;
+  const remarks   = document.getElementById("f-remarks").value.trim();
 
-  const client = {
-    id:             state.modalClient.id || Date.now(),
-    pan, name,
-    mobile:         document.getElementById("f-mobile").value.trim(),
-    ay:             document.getElementById("f-ay").value,
-    itrFiled:       document.getElementById("f-itrFiled").value === "true",
-    itrForm:        document.getElementById("f-itrForm").value,
-    filingDate:     document.getElementById("f-filingDate").value,
-    feeWaived:      waived,
-    feeCharged:     fee,
-    amountReceived: amt,
-    paymentDate:    document.getElementById("f-payDate").value,
-    paymentMode:    document.getElementById("f-payMode").value,
-    status:         calcStatus(fee, amt, waived),
-    remarks:        document.getElementById("f-remarks").value.trim(),
-    partner:        state.modalClient.partner || state.partner,
-  };
+  const isEdit = !!state.modalClient.id;
 
-  // Update local state immediately
-  const idx = state.clients.findIndex(x=>x.id===client.id);
-  if (idx >= 0) state.clients[idx] = client;
-  else state.clients.push(client);
+  if (isEdit) {
+    const client = {
+      id: state.modalClient.id, pan, name, mobile,
+      ay: state.modalClient.ay,
+      itrFiled, itrForm, filingDate, feeWaived: waived,
+      openingDue: opening, feeCharged: fee, amountReceived: amt,
+      paymentDate: payDate, paymentMode: payMode,
+      status: calcStatus(fee, amt, waived, opening),
+      remarks, partner: state.modalClient.partner || state.partner,
+    };
+    const idx = state.clients.findIndex(x=>x.id===client.id);
+    if (idx >= 0) state.clients[idx] = client;
+    closeModal(); renderApp();
+    setSyncStatus("syncing", "Saving to Google Sheets...");
+    try {
+      await sheetSave(client);
+      setSyncStatus("ok", "Saved \u2713  " + new Date().toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"}));
+      try { localStorage.setItem("ca_ft_clients", JSON.stringify(state.clients)); } catch(e){}
+    } catch(err) {
+      setSyncStatus("error", "Saved locally \u2014 could not sync. Click retry.");
+    }
+    return;
+  }
 
-  closeModal();
-  renderApp();
-  setSyncStatus("syncing", "Saving to Google Sheets...");
+  // NEW — collect all ticked AYs (multi-year support)
+  const ayChecks = Array.from(document.querySelectorAll(".f-ay-check:checked")).map(x=>x.value);
+  if (ayChecks.length === 0) { alert("Please tick at least one Assessment Year."); return; }
+
+  const existingPairs = new Set(myClients().map(c => c.pan.toUpperCase()+"|"+c.ay));
+  const newEntries = [];
+  let skipped = 0;
+  ayChecks.forEach((ay, k) => {
+    if (existingPairs.has(pan+"|"+ay)) { skipped++; return; }
+    newEntries.push({
+      id: Date.now() + k,
+      pan, name, mobile, ay,
+      itrFiled, itrForm, filingDate, feeWaived: waived,
+      openingDue: opening, feeCharged: fee, amountReceived: amt,
+      paymentDate: payDate, paymentMode: payMode,
+      status: calcStatus(fee, amt, waived, opening),
+      remarks, partner: state.partner,
+    });
+  });
+
+  if (newEntries.length === 0) {
+    alert("This client already has entries for all selected year(s). Nothing new to add.");
+    return;
+  }
+
+  state.clients.push(...newEntries);
+  closeModal(); renderApp();
+  const summary = newEntries.length + " year-entr" + (newEntries.length>1?"ies":"y") + (skipped>0 ? " (" + skipped + " skipped)" : "");
+  setSyncStatus("syncing", "Saving " + summary + "...");
   try {
-    await sheetSave(client);
-    setSyncStatus("ok", "Saved ✓  " + new Date().toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"}));
+    await sheetBulkSave(newEntries);
+    setSyncStatus("ok", "Saved " + summary + " \u2713");
     try { localStorage.setItem("ca_ft_clients", JSON.stringify(state.clients)); } catch(e){}
   } catch(err) {
-    setSyncStatus("error", "Saved locally — could not sync to Google Sheets. Click ↻ to retry.");
+    setSyncStatus("error", "Saved locally \u2014 could not sync to Google Sheets.");
   }
 }
 
@@ -1228,10 +1331,79 @@ function showImportMsg(ok, text) {
   if (el) el.innerHTML = `<div class="${ok?"import-msg-ok":"import-msg-err"}">${text}</div>`;
 }
 
+// ─── CARRY FORWARD TO NEXT YEAR ───────────────────────────────────────────────
+async function carryForwardYear() {
+  const fromAY = state.filterAY;
+  // Determine next AY (e.g. AY 2025-26 -> AY 2026-27)
+  const m = fromAY.match(/AY (\d{4})-(\d{2})/);
+  if (!m) { alert("Cannot determine next year from " + fromAY); return; }
+  const y1 = parseInt(m[1]) + 1;
+  const y2 = (parseInt(m[2]) + 1).toString().padStart(2,"0");
+  const toAY = "AY " + y1 + "-" + y2;
+
+  const mine = myClients().filter(c => c.ay === fromAY && !c.feeWaived);
+  const withDue = mine.filter(c => totalDue(c) > 0);
+
+  if (withDue.length === 0) {
+    alert("No outstanding dues in " + fromAY + " to carry forward. All clients are cleared!");
+    return;
+  }
+
+  // Check which clients already have a next-year entry
+  const existingNextYear = new Set(
+    myClients().filter(c => c.ay === toAY).map(c => c.pan.toUpperCase())
+  );
+
+  const toCreate = withDue.filter(c => !existingNextYear.has(c.pan.toUpperCase()));
+  const skipped  = withDue.length - toCreate.length;
+
+  if (toCreate.length === 0) {
+    alert("All clients with dues already have " + toAY + " entries. Nothing to carry forward.");
+    return;
+  }
+
+  const msg = "Carry forward " + toCreate.length + " client(s) with outstanding dues from " + fromAY + " to " + toAY + "?\n\n" +
+              "Each will get a new " + toAY + " entry with their current Total Due as the Opening Due." +
+              (skipped > 0 ? "\n\n(" + skipped + " client(s) already have " + toAY + " entries and will be skipped.)" : "");
+  if (!confirm(msg)) return;
+
+  const newEntries = toCreate.map(c => normalize({
+    id:         Date.now() + Math.floor(Math.random()*100000),
+    pan:        c.pan,
+    name:       c.name,
+    mobile:     c.mobile,
+    ay:         toAY,
+    itrForm:    "",
+    itrFiled:   false,
+    filingDate: "",
+    feeWaived:  false,
+    openingDue: totalDue(c),   // carry the outstanding
+    feeCharged: 0,
+    amountReceived: 0,
+    paymentDate:"",
+    paymentMode:"",
+    status:     "Pending",
+    remarks:    "Carried forward from " + fromAY,
+    partner:    c.partner || state.partner,
+  }));
+
+  state.clients.push(...newEntries);
+  state.filterAY = toAY;
+  renderApp();
+  setSyncStatus("syncing", "Carrying forward " + newEntries.length + " clients to " + toAY + "...");
+  try {
+    await sheetBulkSave(newEntries);
+    setSyncStatus("ok", "Carried forward " + newEntries.length + " clients to " + toAY + " \u2713");
+    try { localStorage.setItem("ca_ft_clients", JSON.stringify(state.clients)); } catch(e){}
+  } catch(err) {
+    setSyncStatus("error", "Carried forward locally but could not sync to Google Sheets.");
+  }
+}
+
 // ─── CSV EXPORT ───────────────────────────────────────────────────────────────
 function exportCSV() {
-  const rows=[["PAN","Name","Mobile","AY","ITR Form","ITR Filed","Filing Date","Fee Waived","Fee Charged","Received","Balance","Payment Mode","Status","Remarks"]];
-  state.clients.forEach(c=>rows.push([c.pan,c.name,c.mobile||"",c.ay,c.itrForm||"",c.itrFiled?"Yes":"No",c.filingDate||"",c.feeWaived?"Yes":"No",c.feeWaived?"Waived":c.feeCharged,c.feeWaived?"Waived":c.amountReceived,c.feeWaived?"Waived":(c.feeCharged-c.amountReceived),c.paymentMode||"",c.status,c.remarks||""]));
+  const rows=[["PAN","Name","Mobile","AY","ITR Form","ITR Filed","Filing Date","Fee Waived","Opening Due","Fee Charged","Received","Total Due","Payment Mode","Status","Remarks","Partner"]];
+  myClients().forEach(c=>rows.push([c.pan,c.name,c.mobile||"",c.ay,c.itrForm||"",c.itrFiled?"Yes":"No",c.filingDate||"",c.feeWaived?"Yes":"No",c.feeWaived?"Waived":(c.openingDue||0),c.feeWaived?"Waived":c.feeCharged,c.feeWaived?"Waived":c.amountReceived,c.feeWaived?"Waived":totalDue(c),c.paymentMode||"",c.status,c.remarks||"",partnerName(c.partner)]));
   const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,"")+'"').join(",")).join("\r\n");
   const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
   const url=URL.createObjectURL(blob);
