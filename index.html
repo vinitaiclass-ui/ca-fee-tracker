@@ -1049,15 +1049,14 @@ function addYearForClient(pan) {
   pan = pan.toUpperCase();
   const existing = myClients().filter(c => c.pan.toUpperCase() === pan);
   if (existing.length === 0) { openModal(null); return; }
-  // Use most recent entry as template
+  // Use most recent entry as template for name/mobile only
   const latest = existing.sort((a,b)=>b.ay.localeCompare(a.ay))[0];
-  const totalOutstanding = existing.reduce((s,c)=>s+totalDue(c),0);
-  // Pre-fill a NEW entry (no id) with client details
+  // Pre-fill a NEW entry (no id) with client details — Opening Due left blank
+  // (Opening Due is for genuine prior balances only; use Carry Forward for year-end roll-over)
   openModal({
     pan: latest.pan,
     name: latest.name,
     mobile: latest.mobile,
-    openingDue: totalOutstanding,  // suggest carrying forward total outstanding
     partner: latest.partner,
     remarks: "",
   });
@@ -1203,14 +1202,10 @@ function autofillFromPAN(rawpan) {
     }
   });
 
-  // Suggest carrying total outstanding into opening due
-  const opnEl = document.getElementById("f-openingDue");
-  if (opnEl && totalOut > 0 && !opnEl.value) opnEl.value = totalOut;
-
   hint.innerHTML = "&#10003; Existing client &#8212; <strong>" + sameClient[0].name + "</strong>. " +
     "Already filed: <span style='color:var(--gold-light)'>" + existingAYs.map(a=>a.replace("AY ","")).join(", ") + "</span>. " +
-    (totalOut > 0 ? "<span style='color:#ffaa66'>Outstanding " + fmt(totalOut) + " set as Opening Due.</span> " : "") +
-    "Tick the new year(s) below to add.";
+    (totalOut > 0 ? "<span style='color:#ffaa66'>Current outstanding: " + fmt(totalOut) + " (see Client Total column).</span> " : "") +
+    "Tick the new year(s) below. Leave Opening Due blank unless carrying a genuine prior balance.";
 }
 
 async function saveModalClient() {
