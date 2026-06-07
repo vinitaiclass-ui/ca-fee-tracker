@@ -243,8 +243,16 @@ select option { background:#112236; color:#e8edf5; }
 
 <script>
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
-const SHEET_URL   = "https://script.google.com/macros/s/AKfycbwFzemtBdO9e1X_YAffGwGDhnpFSxgXpE7uuZDrzHCmMd2eaIJ4tSnlsp3txJbd29Nq/exec";
+const SHEET_URL   = "https://script.google.com/macros/s/AKfycbx3ElkSu_xKtpJMLP9NA4Pn2SqNXS04DuuNRsWPXTXAEUSh_TWiidfGqI_AS2s-rKT34A/exec";
 const CA_PASSWORD = "CA@2024";
+
+// ─── Partners ─────────────────────────────────────────────────────────────────
+const PARTNERS = [
+  { id:"vinit",  name:"Vinit Mehta",      password:"VM@2024" },
+  { id:"sugam",  name:"Sugam Saraiwala",  password:"SS@2024" },
+  { id:"chetan", name:"Chetan Agarwal",   password:"CA@2024" },
+];
+function partnerName(id) { const p = PARTNERS.find(x=>x.id===id); return p ? p.name : id; }
 const AY_LIST     = ["AY 2026-27","AY 2025-26","AY 2024-25","AY 2023-24","AY 2022-23"];
 const ITR_FORMS   = ["ITR-1","ITR-2","ITR-3","ITR-4","ITR-5","ITR-6","ITR-7"];
 const PAY_MODES   = ["UPI","Cash","Office Cash","NEFT/RTGS","Cheque","Other"];
@@ -256,7 +264,8 @@ const STATUS_COLORS = {
 
 // ─── STATE ───────────────────────────────────────────────────────────────────
 let state = {
-  role: null,       // "ca" | "associate"
+  role: null,         // "ca" | "associate"
+  partner: null,      // logged-in partner id (also used by associate to tag entries)
   page: "home",
   clients: [],
   filterAY: "AY 2026-27",
@@ -296,6 +305,7 @@ function normalize(c) {
     remarks:    c.remarks     || "",
     status:     c.status      || "Pending",
     ay:         c.ay          || "AY 2026-27",
+    partner:    c.partner     || "vinit",
   };
 }
 
@@ -318,6 +328,10 @@ async function loadData() {
 
 // ─── UTILITIES ───────────────────────────────────────────────────────────────
 const fmt = n => "₹" + Number(n||0).toLocaleString("en-IN");
+// Return only clients belonging to the logged-in partner
+function myClients() {
+  return state.clients.filter(c => (c.partner||"vinit") === state.partner);
+}
 const today = () => new Date().toISOString().split("T")[0];
 function calcStatus(fee, rcv, waived) {
   if (waived) return "Received";
@@ -355,34 +369,64 @@ function render() {
 // ─── LOGIN ───────────────────────────────────────────────────────────────────
 function renderLogin() {
   document.getElementById("app").style.display = "none";
-  document.getElementById("login-screen").innerHTML = `
-  <div class="login-screen">
-    <div class="login-card">
-      <div class="login-logo">
-        <div class="login-logo-badge">CA TOOL</div>
-        <div class="login-logo-title">Fee Tracker</div>
-        <div class="login-logo-sub">Income Tax Filing Management</div>
-      </div>
-      <div class="login-role-tabs">
-        <div class="role-tab active" id="tab-assoc" onclick="selectRole('associate')">
-          <div class="role-tab-name">Associate</div>
-          <div class="role-tab-desc">Data entry access</div>
-        </div>
-        <div class="role-tab" id="tab-ca" onclick="selectRole('ca')">
-          <div class="role-tab-name">CA / Partner</div>
-          <div class="role-tab-desc">Full access</div>
-        </div>
-      </div>
-      <div id="ca-pass-field" style="display:none;margin-bottom:12px;">
-        <input id="ca-password" class="form-input" type="password" placeholder="Enter CA password" onkeydown="if(event.key==='Enter')doLogin()"/>
-      </div>
-      <div id="login-error" class="login-error hidden"></div>
-      <button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="doLogin()">Sign In →</button>
-      <div class="login-hint" id="login-hint">Associates can sign in without a password</div>
-    </div>
-  </div>`;
-  window._loginRole = "associate";
+  const partnerTabs = PARTNERS.map(p =>
+    '<div class="role-tab" id="tab-'+p.id+'" onclick="selectLoginRole(\''+p.id+'\')">' +
+      '<div class="role-tab-name">'+p.name+'</div>' +
+      '<div class="role-tab-desc">Partner login</div>' +
+    '</div>'
+  ).join("");
+
+  document.getElementById("login-screen").innerHTML =
+  '<div class="login-screen">' +
+    '<div class="login-card">' +
+      '<div class="login-logo">' +
+        '<div class="login-logo-badge">CA TOOL</div>' +
+        '<div class="login-logo-title">Fee Tracker</div>' +
+        '<div class="login-logo-sub">Income Tax Filing Management</div>' +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Partners</div>' +
+      '<div class="login-role-tabs" style="flex-direction:column;gap:8px">' + partnerTabs + '</div>' +
+      '<div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px">Staff</div>' +
+      '<div class="login-role-tabs">' +
+        '<div class="role-tab" id="tab-associate" onclick="selectLoginRole(\'associate\')">' +
+          '<div class="role-tab-name">Associate</div>' +
+          '<div class="role-tab-desc">Data entry access</div>' +
+        '</div>' +
+      '</div>' +
+      '<div id="pass-field" style="display:none;margin:12px 0">' +
+        '<input id="login-password" class="form-input" type="password" placeholder="Enter password" onkeydown="if(event.key===\'Enter\')doLogin()"/>' +
+      '</div>' +
+      '<div id="assoc-partner-field" style="display:none;margin:12px 0">' +
+        '<label class="form-label">Entering data for which partner?</label>' +
+        '<select id="assoc-partner-select" class="form-select">' +
+          PARTNERS.map(p=>'<option value="'+p.id+'">'+p.name+'</option>').join("") +
+        '</select>' +
+      '</div>' +
+      '<div id="login-error" class="login-error hidden"></div>' +
+      '<button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px" onclick="doLogin()">Sign In &#8594;</button>' +
+      '<div class="login-hint" id="login-hint">Select your name to sign in</div>' +
+    '</div>' +
+  '</div>';
+  window._loginSel = null;
 }
+
+function selectLoginRole(sel) {
+  window._loginSel = sel;
+  // Clear all tab highlights
+  PARTNERS.forEach(p => { const t=document.getElementById("tab-"+p.id); if(t) t.className="role-tab"; });
+  const at = document.getElementById("tab-associate"); if(at) at.className="role-tab";
+  // Highlight selected
+  const st = document.getElementById("tab-"+sel); if(st) st.className="role-tab active";
+  // Show/hide fields
+  const isAssoc = sel === "associate";
+  document.getElementById("pass-field").style.display          = isAssoc ? "none" : "block";
+  document.getElementById("assoc-partner-field").style.display = isAssoc ? "block" : "none";
+  document.getElementById("login-hint").textContent = isAssoc
+    ? "Associates select a partner, no password needed"
+    : "Enter your password to continue";
+  document.getElementById("login-error").classList.add("hidden");
+}
+
 function selectRole(r) {
   window._loginRole = r;
   document.getElementById("tab-assoc").className = "role-tab" + (r==="associate"?" active":"");
@@ -392,16 +436,31 @@ function selectRole(r) {
   document.getElementById("login-error").classList.add("hidden");
 }
 function doLogin() {
-  const r = window._loginRole || "associate";
-  if (r === "ca") {
-    const pw = document.getElementById("ca-password").value;
-    if (pw !== CA_PASSWORD) {
+  const sel = window._loginSel;
+  if (!sel) {
+    const err = document.getElementById("login-error");
+    err.textContent = "Please select your name or Associate to continue.";
+    err.classList.remove("hidden"); return;
+  }
+
+  if (sel === "associate") {
+    state.role    = "associate";
+    state.partner = document.getElementById("assoc-partner-select").value;
+    state.page    = "home";
+  } else {
+    // Partner login — verify password
+    const partner = PARTNERS.find(p => p.id === sel);
+    const pw = document.getElementById("login-password").value;
+    if (!partner || pw !== partner.password) {
       const err = document.getElementById("login-error");
       err.textContent = "Incorrect password. Please try again.";
       err.classList.remove("hidden"); return;
     }
+    state.role    = "ca";       // partners have full CA access
+    state.partner = partner.id;
+    state.page    = "dashboard";
   }
-  state.role = r; state.page = r === "ca" ? "dashboard" : "home";
+
   document.getElementById("login-screen").innerHTML = "";
   renderApp();
   loadData();
@@ -445,8 +504,8 @@ function renderApp() {
       <div class="role-badge">
         <div class="role-dot"></div>
         <div>
-          <div class="role-name">${isCA ? "CA / Partner" : "Associate"}</div>
-          <div class="role-label">${isCA ? "Full access" : "Data entry"}</div>
+          <div class="role-name">${partnerName(state.partner)}</div>
+          <div class="role-label">${isCA ? "Partner · Full access" : "Associate · Data entry"}</div>
         </div>
       </div>
       <div class="backup-sidebar">
@@ -493,7 +552,7 @@ function renderPage() {
   const el = document.getElementById("page-content");
   if (!el) return;
   const isCA = state.role === "ca";
-  const filtered = state.clients.filter(c => c.ay === state.filterAY);
+  const filtered = myClients().filter(c => c.ay === state.filterAY);
   switch(state.page) {
     case "home":      el.innerHTML = renderAssocHome(); break;
     case "dashboard": el.innerHTML = renderCADashboard(filtered); break;
@@ -514,7 +573,7 @@ function setAssocDrill(type) {
 }
 
 function renderAssocDrillTable() {
-  const mine  = state.clients.filter(c => c.ay === state.filterAY);
+  const mine  = myClients().filter(c => c.ay === state.filterAY);
   const drill = state.assocDrill;
   if (!drill) return "";
 
@@ -561,7 +620,7 @@ function renderAssocDrillTable() {
 }
 
 function renderAssocHome() {
-  const mine = state.clients.filter(c => c.ay === state.filterAY);
+  const mine = myClients().filter(c => c.ay === state.filterAY);
   const filed = mine.filter(c=>c.itrFiled).length;
   const unfiled = mine.filter(c=>!c.itrFiled).length;
   const pending = mine.filter(c=>c.status==="Pending").length;
@@ -595,6 +654,7 @@ function renderAssocHome() {
       <div class="assoc-stat" style="border-left:2px solid #ffcc00;cursor:pointer" onclick="setAssocDrill('partial')"><div class="assoc-stat-label">Partial Payment</div><div class="assoc-stat-value" style="color:#ffee99">${partial}</div><div class="assoc-stat-sub">Click to view &#8599;</div></div>
       <div class="assoc-stat" style="border-left:2px solid #00cc66;cursor:pointer" onclick="setAssocDrill('received')"><div class="assoc-stat-label">Fee Received</div><div class="assoc-stat-value" style="color:#66ffaa">${received}</div><div class="assoc-stat-sub">Click to view &#8599;</div></div>
     </div>
+    <div id="assoc-drill-section">${renderAssocDrillTable()}</div>
     <div class="filing-overview"><div class="filing-overview-title">📊 Progress Overview — ${state.filterAY}</div>
       <div class="filing-dual">
         <div>
@@ -678,8 +738,13 @@ function renderCADashboard(clients) {
         </div>
       </div>
     </div>
+    <div style="margin:18px 0 6px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-outline btn-sm" onclick="setDashDrill('fee-due')" style="border-color:#ffaa66;color:#ffcc99">&#128176; Show All Fee Due</button>
+      <button class="btn btn-outline btn-sm" onclick="setDashDrill('filed-pending')" style="border-color:#ff7b7b;color:#ff9999">&#128308; Filed &amp; Unpaid</button>
+      <button class="btn btn-outline btn-sm" onclick="setDashDrill('unfiled-pending')" style="border-color:#ffcc66;color:#ffdd88">&#128993; Not Filed &amp; Unpaid</button>
+    </div>
     <div id="dash-drill-section">
-      ${renderDashDrill(clients, billable, urgentRows, urgent)}
+      ${renderDashDrill(clients, billable)}
     </div>
   </div>`;
 }
@@ -688,7 +753,7 @@ function renderCADashboard(clients) {
 function renderClientsPage() {
   const isCA = state.role === "ca";
   const q    = state.search.toLowerCase();
-  let list   = state.clients.filter(c => {
+  let list   = myClients().filter(c => {
     const ayOk = state.filterAY === "All" || c.ay === state.filterAY;
     const stOk = state.filterStatus === "All" || c.status === state.filterStatus;
     const srOk = !q || c.name.toLowerCase().includes(q) || c.pan.toLowerCase().includes(q) || (c.mobile||"").includes(q);
@@ -730,7 +795,7 @@ function renderClientsPage() {
       <thead><tr><th>#</th><th>Client Name</th><th>PAN</th><th>Mobile</th><th>AY</th><th>ITR Status</th><th>Form</th><th>Filed On</th><th>Fee</th><th>Received</th><th>Balance</th><th>Status</th><th>Edit</th></tr></thead>
       <tbody>${rows||'<tr><td colspan="13" style="text-align:center;padding:30px;color:var(--text-3)">No records found</td></tr>'}</tbody>
     </table></div>
-    <div style="font-size:11px;color:var(--text-3);margin-top:8px;text-align:right">${list.length} of ${state.clients.length} total records</div>
+    <div style="font-size:11px;color:var(--text-3);margin-top:8px;text-align:right">${list.length} of ${myClients().length} total records</div>
   </div>`;
 }
 
@@ -738,7 +803,7 @@ function renderClientsPage() {
 function renderMasterPage() {
   const isCA = state.role === "ca";
   const masterMap = {};
-  state.clients.forEach(c => {
+  myClients().forEach(c => {
     const pan = c.pan.toUpperCase();
     if (!masterMap[pan]) masterMap[pan] = { pan, name:c.name, mobile:c.mobile, filings:[] };
     if (c.name) masterMap[pan].name = c.name;
@@ -748,7 +813,7 @@ function renderMasterPage() {
   Object.values(masterMap).forEach(m => m.filings.sort((a,b)=>b.ay.localeCompare(a.ay)));
   const list = Object.values(masterMap).sort((a,b)=>a.name.localeCompare(b.name));
   const multiYear = list.filter(m=>m.filings.length>1).length;
-  const allAYs = [...new Set(state.clients.map(c=>c.ay))].sort((a,b)=>b.localeCompare(a));
+  const allAYs = [...new Set(myClients().map(c=>c.ay))].sort((a,b)=>b.localeCompare(a));
 
   const cards = list.map(m => {
     const totalFee = m.filings.filter(f=>!f.feeWaived).reduce((s,f)=>s+f.feeCharged,0);
@@ -767,7 +832,7 @@ function renderMasterPage() {
   return `<div class="fade-in">
     <div class="master-stats-bar">
       <div class="master-stat"><div class="master-stat-label">Unique Clients</div><div class="master-stat-value">${list.length}</div><div class="master-stat-sub">Across all years</div></div>
-      <div class="master-stat"><div class="master-stat-label">Total Filings</div><div class="master-stat-value">${state.clients.length}</div><div class="master-stat-sub">${allAYs.length} AY(s)</div></div>
+      <div class="master-stat"><div class="master-stat-label">Total Filings</div><div class="master-stat-value">${myClients().length}</div><div class="master-stat-sub">${allAYs.length} AY(s)</div></div>
       <div class="master-stat" style="border-left:2px solid var(--gold-dim)"><div class="master-stat-label">Multi-Year</div><div class="master-stat-value" style="color:var(--gold-light)">${multiYear}</div><div class="master-stat-sub">Filed 2+ years</div></div>
       <div class="master-stat" style="border-left:2px solid #9999ff"><div class="master-stat-label">New This Year</div><div class="master-stat-value" style="color:#9999ff">${list.filter(m=>m.filings.length===1&&allAYs[0]&&m.filings[0].ay===allAYs[0]).length}</div><div class="master-stat-sub">${allAYs[0]||"—"}</div></div>
     </div>
@@ -784,7 +849,7 @@ function setDashDrill(type) {
   state.dashDrill = (state.dashDrill === type) ? null : type;
   const el = document.getElementById("dash-drill-section");
   if (el) {
-    const clients  = state.clients.filter(c => c.ay === state.filterAY);
+    const clients  = myClients().filter(c => c.ay === state.filterAY);
     const billable = clients.filter(c => !c.feeWaived);
     el.innerHTML   = renderDashDrill(clients, billable);
   }
@@ -833,6 +898,7 @@ function renderDashDrill(clients, billable) {
   else if (drill === "filed-pending")  { drillList = billable.filter(c=>c.itrFiled&&c.status!=="Received");       drillTitle = "ITR Filed &#8212; Fee Pending";    drillColor = "#ff7b7b"; }
   else if (drill === "unfiled-pending"){ drillList = billable.filter(c=>!c.itrFiled&&c.status!=="Received");      drillTitle = "Not Filed &#8212; Fee Pending";     drillColor = "#ffcc66"; }
   else if (drill === "billed")         { drillList = billable;                                                    drillTitle = "All Billed Clients";          drillColor = "var(--gold-light)"; }
+  else if (drill === "fee-due")        { drillList = billable.filter(c=>c.status!=="Received").sort((a,b)=>(b.feeCharged-b.amountReceived)-(a.feeCharged-a.amountReceived)); drillTitle = "All Fee Due (Filed + Not Filed)"; drillColor = "#ffaa66"; }
 
   if (drill) {
     const rows = drillList.length
@@ -1077,6 +1143,7 @@ async function saveModalClient() {
     paymentMode:    document.getElementById("f-payMode").value,
     status:         calcStatus(fee, amt, waived),
     remarks:        document.getElementById("f-remarks").value.trim(),
+    partner:        state.modalClient.partner || state.partner,
   };
 
   // Update local state immediately
@@ -1116,7 +1183,7 @@ async function handleCSVImport(event) {
   if (lines.length < 2) { showImportMsg(false,"File is empty or has no data rows."); return; }
 
   const headers = parseCSVLine(lines[0]).map(h=>h.toLowerCase().replace(/[\s_\-]/g,""));
-  const existing = new Set(state.clients.map(c=>c.pan.toUpperCase()));
+  const existing = new Set(myClients().map(c=>c.pan.toUpperCase()));
   const imported=[]; let skipped=0;
 
   lines.slice(1).forEach((line,idx)=>{
@@ -1136,7 +1203,7 @@ async function handleCSVImport(event) {
       filingDate: get("filingdate","dateoffiling","date"),
       feeWaived:  waived, feeCharged: waived?0:fee,
       amountReceived:0, paymentDate:"", paymentMode:"",
-      status:"Pending", remarks:"",
+      status:"Pending", remarks:"", partner: state.partner,
     }));
     existing.add(pan);
   });
