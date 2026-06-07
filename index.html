@@ -342,10 +342,17 @@ function calcStatus(fee, rcv, waived, opening) {
   if (rcv >= totalBill) return "Received";
   return "Partial";
 }
-// Total outstanding = opening due + this year fee - received
+// Total outstanding for ONE year row = opening due + this year fee - received
 function totalDue(c) {
   if (c.feeWaived) return 0;
   return (c.openingDue||0) + (c.feeCharged||0) - (c.amountReceived||0);
+}
+// Total outstanding across ALL years for this client (same PAN, same partner)
+function clientTotalOutstanding(pan) {
+  pan = (pan||"").toUpperCase();
+  return state.clients
+    .filter(c => c.pan.toUpperCase() === pan && (c.partner||"vinit") === state.partner)
+    .reduce((s,c) => s + totalDue(c), 0);
 }
 function statusPill(status) {
   const sc = STATUS_COLORS[status] || STATUS_COLORS.Pending;
@@ -782,6 +789,7 @@ function renderClientsPage() {
       <td class="td-amount">${isCA ? (c.feeWaived?"<span class='waived-pill'>🎁</span>":fmt(c.feeCharged)) : "—"}</td>
       <td class="td-amount" style="color:#66ffaa">${isCA ? (c.feeWaived?"—":fmt(c.amountReceived)) : "—"}</td>
       <td class="td-amount" style="color:${due>0&&!c.feeWaived?"#ff7b7b":"#66ffaa"};font-weight:600">${isCA ? (c.feeWaived?"—":fmt(due)) : "—"}</td>
+      <td class="td-amount" style="color:#ffaa66;font-weight:600" title="Total across all years">${isCA ? fmt(clientTotalOutstanding(c.pan)) : "—"}</td>
       <td>${statusPill(c.status)}</td>
       <td><button class="btn btn-sm btn-outline" onclick="openModal(${JSON.stringify(c).replace(/"/g,"&quot;")})">✎</button></td>
     </tr>`;}).join("");
@@ -800,8 +808,8 @@ function renderClientsPage() {
       <span style="font-size:11px;color:var(--text-3)">${list.length} records</span>
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th>#</th><th>Client Name</th><th>PAN</th><th>Mobile</th><th>AY</th><th>ITR Status</th><th>Form</th><th>Opening Due</th><th>This Yr Fee</th><th>Received</th><th>Total Due</th><th>Status</th><th>Edit</th></tr></thead>
-      <tbody>${rows||'<tr><td colspan="13" style="text-align:center;padding:30px;color:var(--text-3)">No records found</td></tr>'}</tbody>
+      <thead><tr><th>#</th><th>Client Name</th><th>PAN</th><th>Mobile</th><th>AY</th><th>ITR Status</th><th>Form</th><th>Opening Due</th><th>This Yr Fee</th><th>Received</th><th>Yr Due</th><th>Client Total</th><th>Status</th><th>Edit</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="14" style="text-align:center;padding:30px;color:var(--text-3)">No records found</td></tr>'}</tbody>
     </table></div>
     <div style="font-size:11px;color:var(--text-3);margin-top:8px;text-align:right">${list.length} of ${myClients().length} total records</div>
   </div>`;
@@ -824,9 +832,9 @@ function renderMasterPage() {
   const allAYs = [...new Set(myClients().map(c=>c.ay))].sort((a,b)=>b.localeCompare(a));
 
   const cards = list.map(m => {
-    const totalFee = m.filings.filter(f=>!f.feeWaived).reduce((s,f)=>s+f.feeCharged,0);
+    const totalFee = m.filings.filter(f=>!f.feeWaived).reduce((s,f)=>s+(f.openingDue||0)+f.feeCharged,0);
     const totalRcv = m.filings.filter(f=>!f.feeWaived).reduce((s,f)=>s+f.amountReceived,0);
-    const outstanding = totalFee - totalRcv;
+    const outstanding = m.filings.reduce((s,f)=>s+totalDue(f),0);
     const ayChips = m.filings.map(f=>`<span class="master-ay-chip">${f.ay.replace("AY ","")}</span>`).join("");
     return `<div class="master-card">
       <div class="master-card-header">
@@ -888,6 +896,7 @@ function makeDrillRow(c, i) {
     '<td class="td-amount">'+fmt(c.feeCharged)+'</td>' +
     '<td class="td-amount" style="color:#66ffaa">'+fmt(c.amountReceived)+'</td>' +
     '<td class="td-amount" style="color:'+(due>0?'#ff7b7b':'#66ffaa')+';font-weight:600">'+fmt(due)+'</td>' +
+    '<td class="td-amount" style="color:#ffaa66;font-weight:600" title="Total across all years for this client">'+fmt(clientTotalOutstanding(c.pan))+'</td>' +
     '<td>'+pill+'</td>' +
     '<td><button class="btn btn-sm btn-outline" onclick="dashEdit('+c.id+')">&#9998;</button></td>' +
     '</tr>';
@@ -896,7 +905,7 @@ function makeDrillRow(c, i) {
 function renderDashDrill(clients, billable) {
   const drill = state.dashDrill;
   const thead = '<thead><tr><th>#</th><th>Name</th><th>PAN</th><th>Mobile</th>' +
-                '<th>ITR</th><th>Opening Due</th><th>This Yr Fee</th><th>Received</th><th>Total Due</th><th>Status</th><th>Edit</th></tr></thead>';
+                '<th>ITR</th><th>Opening Due</th><th>This Yr Fee</th><th>Received</th><th>Yr Due</th><th>Client Total</th><th>Status</th><th>Edit</th></tr></thead>';
 
   let drillList  = [];
   let drillTitle = "";
@@ -914,7 +923,7 @@ function renderDashDrill(clients, billable) {
   if (drill) {
     const rows = drillList.length
       ? drillList.map(makeDrillRow).join("")
-      : '<tr><td colspan="11" style="text-align:center;padding:24px;color:var(--text-3)">No clients in this category</td></tr>';
+      : '<tr><td colspan="12" style="text-align:center;padding:24px;color:var(--text-3)">No clients in this category</td></tr>';
     return (
       '<div style="margin:16px 0 8px;display:flex;align-items:center;gap:10px">' +
         '<span style="font-size:13px;font-weight:600;color:'+drillColor+'">'+drillTitle+' ('+drillList.length+')</span>' +
@@ -931,12 +940,12 @@ function renderDashDrill(clients, billable) {
     .slice(0, 10);
   const urgentRows = urgent.length
     ? urgent.map(makeDrillRow).join("")
-    : '<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--text-3)">&#127881; All fees collected!</td></tr>';
+    : '<tr><td colspan="12" style="text-align:center;padding:30px;color:var(--text-3)">&#127881; All fees collected!</td></tr>';
   return (
     '<div style="margin:16px 0 8px;font-size:12px;color:var(--text-3)">&#9888; Top Outstanding &#8212; click any card above to drill down</div>' +
     '<div class="table-wrap"><table>' +
       '<thead><tr><th>#</th><th>Client Name</th><th>PAN</th><th>Mobile</th><th>ITR</th>' +
-      '<th>Opening Due</th><th>This Yr Fee</th><th>Received</th><th>Total Due</th><th>Status</th><th>Edit</th></tr></thead>' +
+      '<th>Opening Due</th><th>This Yr Fee</th><th>Received</th><th>Yr Due</th><th>Client Total</th><th>Status</th><th>Edit</th></tr></thead>' +
       '<tbody>'+urgentRows+'</tbody>' +
     '</table></div>'
   );
@@ -1159,25 +1168,49 @@ function setWaived(val) {
   document.getElementById("waive-yes").style.color       = val ? "#88cc88" : "var(--text-3)";
 }
 
-function autofillFromPAN(pan) {
-  pan = (pan||"").trim().toUpperCase();
+function autofillFromPAN(rawpan) {
+  const pan  = (rawpan||"").trim().toUpperCase().replace(/\s/g,"");
   const hint = document.getElementById("pan-autofill-hint");
-  if (pan.length < 10) { if(hint) hint.textContent=""; return; }
-  // Find an existing client (any year) with this PAN for this partner
-  const match = myClients().find(c => c.pan.toUpperCase() === pan);
-  if (match) {
-    const nameEl = document.getElementById("f-name");
-    const mobEl  = document.getElementById("f-mobile");
-    if (nameEl && !nameEl.value) nameEl.value = match.name;
-    if (mobEl  && !mobEl.value)  mobEl.value  = match.mobile || "";
-    // Also offer to carry their latest outstanding as opening due
-    const sameClient = myClients().filter(c=>c.pan.toUpperCase()===pan);
-    const latestDue  = sameClient.reduce((s,c)=>s+totalDue(c),0);
-    if (hint) hint.innerHTML = "&#10003; Existing client \u2014 details auto-filled" +
-      (latestDue>0 ? " &middot; <span style='color:#ffaa66'>Total outstanding: "+fmt(latestDue)+"</span>" : "");
-  } else {
-    if (hint) hint.textContent = "";
-  }
+  if (!hint) return;
+  if (pan.length < 10) { hint.textContent = ""; return; }
+
+  const sameClient = myClients().filter(c => c.pan.toUpperCase() === pan);
+  if (sameClient.length === 0) { hint.innerHTML = "<span style='color:#7fd6ff'>New client &#8212; no previous records</span>"; return; }
+
+  // Auto-fill name & mobile
+  const nameEl = document.getElementById("f-name");
+  const mobEl  = document.getElementById("f-mobile");
+  if (nameEl) nameEl.value = sameClient[0].name;
+  if (mobEl && !mobEl.value) mobEl.value = sameClient[0].mobile || "";
+
+  // Which years already exist?
+  const existingAYs = sameClient.map(c => c.ay).sort();
+  const totalOut    = sameClient.reduce((s,c)=>s+totalDue(c),0);
+
+  // Uncheck and disable AYs that already exist; tick a fresh one
+  document.querySelectorAll(".f-ay-check").forEach(chk => {
+    const lbl = chk.parentElement;
+    if (existingAYs.indexOf(chk.value) >= 0) {
+      chk.checked = false; chk.disabled = true;
+      lbl.style.opacity = "0.4";
+      lbl.style.borderColor = "var(--border)";
+      lbl.style.background = "var(--navy-3)";
+      lbl.style.color = "var(--text-3)";
+      lbl.title = "Already exists for this client";
+    } else {
+      chk.disabled = false;
+      lbl.style.opacity = "1";
+    }
+  });
+
+  // Suggest carrying total outstanding into opening due
+  const opnEl = document.getElementById("f-openingDue");
+  if (opnEl && totalOut > 0 && !opnEl.value) opnEl.value = totalOut;
+
+  hint.innerHTML = "&#10003; Existing client &#8212; <strong>" + sameClient[0].name + "</strong>. " +
+    "Already filed: <span style='color:var(--gold-light)'>" + existingAYs.map(a=>a.replace("AY ","")).join(", ") + "</span>. " +
+    (totalOut > 0 ? "<span style='color:#ffaa66'>Outstanding " + fmt(totalOut) + " set as Opening Due.</span> " : "") +
+    "Tick the new year(s) below to add.";
 }
 
 async function saveModalClient() {
