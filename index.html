@@ -819,6 +819,43 @@ function renderClientsPage() {
 // ─── CLIENT MASTER ────────────────────────────────────────────────────────────
 function renderMasterPage() {
   const isCA = state.role === "ca";
+  const list = buildMasterList();
+  const allList = buildMasterListUnfiltered();
+  const multiYear = allList.filter(m=>m.filings.length>1).length;
+  const allAYs = [...new Set(myClients().map(c=>c.ay))].sort((a,b)=>b.localeCompare(a));
+  const totalUnique = allList.length;
+
+  const cards = renderMasterCards(list);
+
+  return `<div class="fade-in">
+    <div class="master-stats-bar">
+      <div class="master-stat"><div class="master-stat-label">Unique Clients</div><div class="master-stat-value">${totalUnique}</div><div class="master-stat-sub">Across all years</div></div>
+      <div class="master-stat"><div class="master-stat-label">Total Filings</div><div class="master-stat-value">${myClients().length}</div><div class="master-stat-sub">${allAYs.length} AY(s)</div></div>
+      <div class="master-stat" style="border-left:2px solid var(--gold-dim)"><div class="master-stat-label">Multi-Year</div><div class="master-stat-value" style="color:var(--gold-light)">${multiYear}</div><div class="master-stat-sub">Filed 2+ years</div></div>
+      <div class="master-stat" style="border-left:2px solid #9999ff"><div class="master-stat-label">New This Year</div><div class="master-stat-value" style="color:#9999ff">${allList.filter(m=>m.filings.length===1&&allAYs[0]&&m.filings[0].ay===allAYs[0]).length}</div><div class="master-stat-sub">${allAYs[0]||"—"}</div></div>
+    </div>
+    <div class="master-search-bar">
+      <input class="form-input" style="flex:1;min-width:200px;margin:0" placeholder="Search name, PAN or mobile..." id="master-search" value="${state.masterSearch}" oninput="onMasterSearchInput(this.value)"/>
+      <span class="master-count-badge" id="master-count">${list.length} clients</span>
+    </div>
+    <div id="master-cards">${cards||'<div class="master-empty">📋<br>No clients yet</div>'}</div>
+  </div>`;
+}
+
+function buildMasterListUnfiltered() {
+  const masterMap = {};
+  myClients().forEach(c => {
+    const pan = c.pan.toUpperCase();
+    if (!masterMap[pan]) masterMap[pan] = { pan, name:c.name, mobile:c.mobile, filings:[] };
+    if (c.name) masterMap[pan].name = c.name;
+    if (c.mobile) masterMap[pan].mobile = c.mobile;
+    masterMap[pan].filings.push(c);
+  });
+  Object.values(masterMap).forEach(m => m.filings.sort((a,b)=>b.ay.localeCompare(a.ay)));
+  return Object.values(masterMap).sort((a,b)=>a.name.localeCompare(b.name));
+}
+
+function buildMasterList() {
   const masterMap = {};
   myClients().forEach(c => {
     const pan = c.pan.toUpperCase();
@@ -831,41 +868,36 @@ function renderMasterPage() {
   let list = Object.values(masterMap).sort((a,b)=>a.name.localeCompare(b.name));
   const q = (state.masterSearch||"").toLowerCase().trim();
   if (q) list = list.filter(m =>
-    m.name.toLowerCase().includes(q) ||
-    m.pan.toLowerCase().includes(q) ||
+    (m.name||"").toLowerCase().includes(q) ||
+    (m.pan||"").toLowerCase().includes(q) ||
     (m.mobile||"").includes(q)
   );
-  const multiYear = list.filter(m=>m.filings.length>1).length;
-  const allAYs = [...new Set(myClients().map(c=>c.ay))].sort((a,b)=>b.localeCompare(a));
+  return list;
+}
 
-  const cards = list.map(m => {
-    const totalFee = m.filings.filter(f=>!f.feeWaived).reduce((s,f)=>s+(f.openingDue||0)+f.feeCharged,0);
-    const totalRcv = m.filings.filter(f=>!f.feeWaived).reduce((s,f)=>s+f.amountReceived,0);
+function renderMasterCards(list) {
+  const isCA = state.role === "ca";
+  if (list.length === 0) return '<div class="master-empty">📋<br>No clients found</div>';
+  return list.map(m => {
     const outstanding = m.filings.reduce((s,f)=>s+totalDue(f),0);
-    const ayChips = m.filings.map(f=>`<span class="master-ay-chip">${f.ay.replace("AY ","")}</span>`).join("");
-    return `<div class="master-card">
-      <div class="master-card-header">
-        <div><div class="master-card-name">${m.name}</div><div class="master-card-pan">${m.pan}</div></div>
-        <div class="master-card-mobile">${m.mobile||"—"}</div>
-        <div class="master-card-meta">${ayChips}</div>
-        ${isCA ? `<div style="text-align:right"><div style="font-size:11px;color:var(--text-3)">${m.filings.length} filing(s)</div>${outstanding>0?`<div style="font-size:12px;color:#ff9999;font-family:'DM Mono',monospace">${fmt(outstanding)} due</div>`:'<div style="font-size:12px;color:#66ffaa">✓ Clear</div>'}</div>` : ""}
-        <button class="btn btn-sm btn-outline" onclick="addYearForClient('${m.pan}')" style="white-space:nowrap">+ Add Year</button>
-      </div>
-    </div>`;}).join("");
+    const ayChips = m.filings.map(f=>'<span class="master-ay-chip">'+f.ay.replace("AY ","")+'</span>').join("");
+    return '<div class="master-card"><div class="master-card-header">' +
+      '<div><div class="master-card-name">'+m.name+'</div><div class="master-card-pan">'+m.pan+'</div></div>' +
+      '<div class="master-card-mobile">'+(m.mobile||"—")+'</div>' +
+      '<div class="master-card-meta">'+ayChips+'</div>' +
+      (isCA ? '<div style="text-align:right"><div style="font-size:11px;color:var(--text-3)">'+m.filings.length+' filing(s)</div>'+(outstanding>0?'<div style="font-size:12px;color:#ff9999;font-family:\'DM Mono\',monospace">'+fmt(outstanding)+' due</div>':'<div style="font-size:12px;color:#66ffaa">✓ Clear</div>')+'</div>' : "") +
+      '<button class="btn btn-sm btn-outline" onclick="addYearForClient(\''+m.pan+'\')" style="white-space:nowrap">+ Add Year</button>' +
+      '</div></div>';
+  }).join("");
+}
 
-  return `<div class="fade-in">
-    <div class="master-stats-bar">
-      <div class="master-stat"><div class="master-stat-label">Unique Clients</div><div class="master-stat-value">${list.length}</div><div class="master-stat-sub">Across all years</div></div>
-      <div class="master-stat"><div class="master-stat-label">Total Filings</div><div class="master-stat-value">${myClients().length}</div><div class="master-stat-sub">${allAYs.length} AY(s)</div></div>
-      <div class="master-stat" style="border-left:2px solid var(--gold-dim)"><div class="master-stat-label">Multi-Year</div><div class="master-stat-value" style="color:var(--gold-light)">${multiYear}</div><div class="master-stat-sub">Filed 2+ years</div></div>
-      <div class="master-stat" style="border-left:2px solid #9999ff"><div class="master-stat-label">New This Year</div><div class="master-stat-value" style="color:#9999ff">${list.filter(m=>m.filings.length===1&&allAYs[0]&&m.filings[0].ay===allAYs[0]).length}</div><div class="master-stat-sub">${allAYs[0]||"—"}</div></div>
-    </div>
-    <div class="master-search-bar">
-      <input class="form-input" style="flex:1;min-width:200px;margin:0" placeholder="Search name, PAN or mobile..." id="master-search" value="${state.masterSearch}" oninput="state.masterSearch=this.value;document.getElementById('page-content').innerHTML=renderMasterPage();document.getElementById('master-search').focus();document.getElementById('master-search').setSelectionRange(this.value.length,this.value.length)"/>
-      <span class="master-count-badge">${list.length} clients</span>
-    </div>
-    ${cards||'<div class="master-empty">📋<br>No clients yet</div>'}
-  </div>`;
+function onMasterSearchInput(val) {
+  state.masterSearch = val;
+  const list = buildMasterList();
+  const cardsEl = document.getElementById("master-cards");
+  const countEl = document.getElementById("master-count");
+  if (cardsEl) cardsEl.innerHTML = renderMasterCards(list);
+  if (countEl) countEl.textContent = list.length + " clients";
 }
 
 // ─── REPORTS ──────────────────────────────────────────────────────────────────
