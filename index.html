@@ -285,10 +285,25 @@ async function sheetGet() {
   return (data.clients || []).map(normalize);
 }
 async function sheetSave(client) {
-  await fetch(SHEET_URL, { method:"POST", body:JSON.stringify({ action:"save", client }) });
+  await fetch(SHEET_URL, {
+    method:"POST", mode:"no-cors",
+    headers:{ "Content-Type":"text/plain;charset=utf-8" },
+    body:JSON.stringify({ action:"save", client })
+  });
 }
 async function sheetBulkSave(clients) {
-  await fetch(SHEET_URL, { method:"POST", body:JSON.stringify({ action:"bulkSave", clients }) });
+  await fetch(SHEET_URL, {
+    method:"POST", mode:"no-cors",
+    headers:{ "Content-Type":"text/plain;charset=utf-8" },
+    body:JSON.stringify({ action:"bulkSave", clients })
+  });
+}
+async function sheetDelete(id) {
+  await fetch(SHEET_URL, {
+    method:"POST", mode:"no-cors",
+    headers:{ "Content-Type":"text/plain;charset=utf-8" },
+    body:JSON.stringify({ action:"delete", id:String(id) })
+  });
 }
 function normalize(c) {
   return {
@@ -306,9 +321,17 @@ function normalize(c) {
     paymentMode:c.paymentMode || "",
     remarks:    c.remarks     || "",
     status:     c.status      || "Pending",
-    ay:         c.ay          || "AY 2026-27",
+    ay:         normalizeAY(c.ay),
     partner:    c.partner     || "vinit",
   };
+}
+// Standardize AY format: "2026-27" -> "AY 2026-27"
+function normalizeAY(ay) {
+  if (!ay) return "AY 2026-27";
+  ay = String(ay).trim();
+  if (/^\d{4}-\d{2}$/.test(ay)) return "AY " + ay;  // "2026-27" -> "AY 2026-27"
+  if (/^AY\s/.test(ay)) return ay;                    // already "AY 2026-27"
+  return ay;
 }
 
 async function loadData() {
@@ -887,6 +910,7 @@ function renderMasterCards(list) {
       '<div class="master-card-meta">'+ayChips+'</div>' +
       (isCA ? '<div style="text-align:right"><div style="font-size:11px;color:var(--text-3)">'+m.filings.length+' filing(s)</div>'+(outstanding>0?'<div style="font-size:12px;color:#ff9999;font-family:\'DM Mono\',monospace">'+fmt(outstanding)+' due</div>':'<div style="font-size:12px;color:#66ffaa">✓ Clear</div>')+'</div>' : "") +
       '<button class="btn btn-sm btn-outline" onclick="addYearForClient(\''+m.pan+'\')" style="white-space:nowrap">+ Add Year</button>' +
+      (isCA ? '<button class="btn btn-sm btn-outline" onclick="deleteClientAllYears(\''+m.pan+'\')" style="white-space:nowrap;border-color:#ff4444;color:#ff7b7b" title="Delete this client and all years">🗑</button>' : "") +
       '</div></div>';
   }).join("");
 }
@@ -1248,6 +1272,41 @@ function autofillFromPAN(rawpan) {
     "Already filed: <span style='color:var(--gold-light)'>" + existingAYs.map(a=>a.replace("AY ","")).join(", ") + "</span>. " +
     (totalOut > 0 ? "<span style='color:#ffaa66'>Current outstanding: " + fmt(totalOut) + " (see Client Total column).</span> " : "") +
     "Tick the new year(s) below. Leave Opening Due blank unless carrying a genuine prior balance.";
+}
+
+async function deleteClientAllYears(pan) {
+  if (state.role !== "ca") { alert("Only partners can delete records."); return; }
+  pan = pan.toUpperCase();
+  const entries = myClients().filter(c => c.pan.toUpperCase() === pan);
+  if (entries.length === 0) return;
+  const name = entries[0].name;
+  const totalOut = entries.reduce((s,c)=>s+totalDue(c),0);
+  const warn = "Delete ALL records for this client?\n\n" +
+    "Client: " + name + " (" + pan + ")\n" +
+    "Years: " + entries.map(e=>e.ay.replace("AY ","")).join(", ") + "\n" +
+    (totalOut > 0 ? "Total outstanding: " + fmt(totalOut) + "\n" : "") +
+    "\nThis deletes " + entries.length + " entr" + (entries.length>1?"ies":"y") + " permanently and cannot be undone.";
+  if (!confirm(warn)) return;
+
+  const ids = entries.map(e => e.id);
+  // Remove locally
+  state.clients = state.clients.filter(c => ids.indexOf(c.id) < 0);
+  if (state.page === "master") {
+    document.getElementById("page-content").innerHTML = renderMasterPage();
+  } else {
+    renderApp();
+  }
+  setSyncStatus("syncing", "Deleting " + ids.length + " record(s) from Google Sheets...");
+  let failed = 0;
+  for (const id of ids) {
+    try { await sheetDelete(id); } catch(e) { failed++; }
+  }
+  if (failed === 0) {
+    setSyncStatus("ok", "Deleted " + ids.length + " record(s) \u2713");
+    try { localStorage.setItem("ca_ft_clients", JSON.stringify(state.clients)); } catch(e){}
+  } else {
+    setSyncStatus("error", failed + " of " + ids.length + " could not sync. Click retry.");
+  }
 }
 
 async function deleteModalClient() {
