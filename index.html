@@ -272,6 +272,7 @@ let state = {
   syncStatus: "loading",
   syncMsg: "Connecting to Google Sheets...",
   search: "",
+  masterSearch: "",
   filterStatus: "All",
   modalClient: null,  // null=closed, {}=new, {id:...}=edit
 };
@@ -827,7 +828,13 @@ function renderMasterPage() {
     masterMap[pan].filings.push(c);
   });
   Object.values(masterMap).forEach(m => m.filings.sort((a,b)=>b.ay.localeCompare(a.ay)));
-  const list = Object.values(masterMap).sort((a,b)=>a.name.localeCompare(b.name));
+  let list = Object.values(masterMap).sort((a,b)=>a.name.localeCompare(b.name));
+  const q = (state.masterSearch||"").toLowerCase().trim();
+  if (q) list = list.filter(m =>
+    m.name.toLowerCase().includes(q) ||
+    m.pan.toLowerCase().includes(q) ||
+    (m.mobile||"").includes(q)
+  );
   const multiYear = list.filter(m=>m.filings.length>1).length;
   const allAYs = [...new Set(myClients().map(c=>c.ay))].sort((a,b)=>b.localeCompare(a));
 
@@ -854,7 +861,7 @@ function renderMasterPage() {
       <div class="master-stat" style="border-left:2px solid #9999ff"><div class="master-stat-label">New This Year</div><div class="master-stat-value" style="color:#9999ff">${list.filter(m=>m.filings.length===1&&allAYs[0]&&m.filings[0].ay===allAYs[0]).length}</div><div class="master-stat-sub">${allAYs[0]||"—"}</div></div>
     </div>
     <div class="master-search-bar">
-      <input class="form-input" style="flex:1;min-width:200px;margin:0" placeholder="Search name, PAN or mobile..."/>
+      <input class="form-input" style="flex:1;min-width:200px;margin:0" placeholder="Search name, PAN or mobile..." id="master-search" value="${state.masterSearch}" oninput="state.masterSearch=this.value;document.getElementById('page-content').innerHTML=renderMasterPage();document.getElementById('master-search').focus();document.getElementById('master-search').setSelectionRange(this.value.length,this.value.length)"/>
       <span class="master-count-badge">${list.length} clients</span>
     </div>
     ${cards||'<div class="master-empty">📋<br>No clients yet</div>'}
@@ -1141,6 +1148,9 @@ function renderModal() {
         </div>
       </div>
       <div class="modal-footer">
+        <div style="margin-right:auto">
+          ${(!isNew && state.role==="ca") ? '<button class="btn btn-outline" onclick="deleteModalClient()" style="border-color:#ff4444;color:#ff7b7b">🗑 Delete</button>' : ''}
+        </div>
         <div id="form-balance" style="font-size:12px;color:var(--text-3)"></div>
         <div style="display:flex;gap:8px">
           <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -1206,6 +1216,33 @@ function autofillFromPAN(rawpan) {
     "Already filed: <span style='color:var(--gold-light)'>" + existingAYs.map(a=>a.replace("AY ","")).join(", ") + "</span>. " +
     (totalOut > 0 ? "<span style='color:#ffaa66'>Current outstanding: " + fmt(totalOut) + " (see Client Total column).</span> " : "") +
     "Tick the new year(s) below. Leave Opening Due blank unless carrying a genuine prior balance.";
+}
+
+async function deleteModalClient() {
+  const c = state.modalClient;
+  if (!c || !c.id) return;
+  if (state.role !== "ca") { alert("Only partners can delete records."); return; }
+
+  const due = totalDue(c);
+  const warn = "Delete this record permanently?\n\n" +
+    "Client: " + c.name + " (" + c.pan + ")\n" +
+    "Year: " + c.ay + "\n" +
+    (due > 0 ? "Outstanding: " + fmt(due) + "\n" : "") +
+    "\nThis removes ONLY this year's entry. Other years for this client stay intact.\nThis cannot be undone.";
+  if (!confirm(warn)) return;
+
+  // Remove from local state
+  state.clients = state.clients.filter(x => String(x.id) !== String(c.id));
+  closeModal();
+  renderApp();
+  setSyncStatus("syncing", "Deleting record from Google Sheets...");
+  try {
+    await sheetDelete(c.id);
+    setSyncStatus("ok", "Record deleted \u2713");
+    try { localStorage.setItem("ca_ft_clients", JSON.stringify(state.clients)); } catch(e){}
+  } catch(err) {
+    setSyncStatus("error", "Deleted locally but could not sync to Google Sheets. Click retry.");
+  }
 }
 
 async function saveModalClient() {
