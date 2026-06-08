@@ -789,17 +789,19 @@ function renderCADashboard(clients) {
 }
 
 // ─── CLIENTS PAGE ─────────────────────────────────────────────────────────────
-function renderClientsPage() {
-  const isCA = state.role === "ca";
-  const q    = state.search.toLowerCase();
-  let list   = myClients().filter(c => {
+function buildClientList() {
+  const q = (state.search||"").toLowerCase();
+  return myClients().filter(c => {
     const ayOk = state.filterAY === "All" || c.ay === state.filterAY;
     const stOk = state.filterStatus === "All" || c.status === state.filterStatus;
-    const srOk = !q || c.name.toLowerCase().includes(q) || c.pan.toLowerCase().includes(q) || (c.mobile||"").includes(q);
+    const srOk = !q || (c.name||"").toLowerCase().includes(q) || (c.pan||"").toLowerCase().includes(q) || (c.mobile||"").includes(q);
     return ayOk && stOk && srOk;
   });
+}
 
-  const rows = list.map((c,i) => {
+function buildClientRows(list) {
+  const isCA = state.role === "ca";
+  return list.map((c,i) => {
     const due = totalDue(c);
     return `<tr class="${c.feeWaived?"waived-row":""}">
       <td style="font-size:12px;color:var(--text-3)">${i+1}</td>
@@ -817,25 +819,41 @@ function renderClientsPage() {
       <td>${statusPill(c.status)}</td>
       <td><button class="btn btn-sm btn-outline" onclick="openModal(${JSON.stringify(c).replace(/"/g,"&quot;")})">✎</button></td>
     </tr>`;}).join("");
+}
 
+function onClientSearchInput(val) {
+  state.search = val;
+  const list = buildClientList();
+  const tbody = document.getElementById("clients-tbody");
+  const count = document.getElementById("clients-count");
+  const total = document.getElementById("clients-total");
+  if (tbody) tbody.innerHTML = buildClientRows(list) || '<tr><td colspan="14" style="text-align:center;padding:30px;color:var(--text-3)">No records found</td></tr>';
+  if (count) count.textContent = list.length + " records";
+  if (total) total.textContent = list.length + " of " + myClients().length + " total records";
+}
+
+function renderClientsPage() {
+  const isCA = state.role === "ca";
+  const list = buildClientList();
+  const rows = buildClientRows(list);
   const statusOpts = ["All","Pending","Partial","Received"].map(s =>
     `<option${s===state.filterStatus?" selected":""}>${s}</option>`).join("");
 
   return `<div class="fade-in">
     <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
-      <input class="form-input" style="flex:1;min-width:180px;margin:0" placeholder="Search name, PAN, mobile..." id="client-search" value="${state.search}" oninput="state.search=this.value;renderPage()"/>
-      <select class="filter-select" onchange="state.filterStatus=this.value;renderPage()">${statusOpts}</select>
+      <input class="form-input" style="flex:1;min-width:180px;margin:0" placeholder="Search name, PAN, mobile..." id="client-search" value="${state.search}" oninput="onClientSearchInput(this.value)"/>
+      <select class="filter-select" onchange="state.filterStatus=this.value;onClientSearchInput(state.search)">${statusOpts}</select>
       <label style="cursor:pointer">
         <div class="btn btn-outline btn-sm">⬆ Import CSV</div>
         <input type="file" accept=".csv" onchange="handleCSVImport(event)" style="display:none"/>
       </label>
-      <span style="font-size:11px;color:var(--text-3)">${list.length} records</span>
+      <span style="font-size:11px;color:var(--text-3)" id="clients-count">${list.length} records</span>
     </div>
     <div class="table-wrap"><table>
       <thead><tr><th>#</th><th>Client Name</th><th>PAN</th><th>Mobile</th><th>AY</th><th>ITR Status</th><th>Form</th><th>Opening Due</th><th>This Yr Fee</th><th>Received</th><th>Yr Due</th><th>Client Total</th><th>Status</th><th>Edit</th></tr></thead>
-      <tbody>${rows||'<tr><td colspan="14" style="text-align:center;padding:30px;color:var(--text-3)">No records found</td></tr>'}</tbody>
+      <tbody id="clients-tbody">${rows||'<tr><td colspan="14" style="text-align:center;padding:30px;color:var(--text-3)">No records found</td></tr>'}</tbody>
     </table></div>
-    <div style="font-size:11px;color:var(--text-3);margin-top:8px;text-align:right">${list.length} of ${myClients().length} total records</div>
+    <div style="font-size:11px;color:var(--text-3);margin-top:8px;text-align:right" id="clients-total">${list.length} of ${myClients().length} total records</div>
   </div>`;
 }
 
@@ -1288,14 +1306,10 @@ async function deleteClientAllYears(pan) {
     "\nThis deletes " + entries.length + " entr" + (entries.length>1?"ies":"y") + " permanently and cannot be undone.";
   if (!confirm(warn)) return;
 
-  const ids = entries.map(e => e.id);
+  const ids = entries.map(e => String(e.id));
   // Remove locally
-  state.clients = state.clients.filter(c => ids.indexOf(c.id) < 0);
-  if (state.page === "master") {
-    document.getElementById("page-content").innerHTML = renderMasterPage();
-  } else {
-    renderApp();
-  }
+  state.clients = state.clients.filter(c => ids.indexOf(String(c.id)) < 0);
+  renderPage();
   setSyncStatus("syncing", "Deleting " + ids.length + " record(s) from Google Sheets...");
   let failed = 0;
   for (const id of ids) {
