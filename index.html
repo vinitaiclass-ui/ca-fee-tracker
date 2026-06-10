@@ -38,6 +38,11 @@
   .btn-logout { width:100%; display:flex; align-items:center; justify-content:center; gap:8px; padding:9px; border:1px solid var(--border); border-radius:var(--radius); background:transparent; color:var(--text-3); font-size:12px; cursor:pointer; transition:all 0.2s; font-family:'DM Sans',sans-serif; }
   .btn-logout:hover { background:rgba(255,80,80,0.1); color:#ff7b7b; border-color:rgba(255,80,80,0.3); }
 
+  /* Docs received pill */
+  .docs-pill { display:inline-flex; align-items:center; gap:3px; font-size:10px; padding:2px 8px; border-radius:10px; white-space:nowrap; font-weight:500; }
+  .docs-yes { background:rgba(0,180,120,0.15); color:#5fe0a8; border:1px solid rgba(0,180,120,0.3); }
+  .docs-no  { background:rgba(120,120,140,0.12); color:#9090a8; border:1px solid rgba(120,120,140,0.25); }
+
   /* Sync status bar */
   .sync-bar { display:flex; align-items:center; gap:8px; padding:7px 18px; font-size:11px; border-bottom:1px solid var(--border-2); }
   .sync-bar.syncing  { background:rgba(201,168,76,0.06); color:var(--gold-light); }
@@ -313,6 +318,7 @@ function normalize(c) {
     feeCharged:     Number(c.feeCharged)     || 0,
     amountReceived: Number(c.amountReceived) || 0,
     itrFiled:  c.itrFiled  === true || c.itrFiled  === "TRUE"  || c.itrFiled  === "true",
+    docsReceived: c.docsReceived === true || c.docsReceived === "TRUE" || c.docsReceived === "true",
     feeWaived: c.feeWaived === true || c.feeWaived === "TRUE"  || c.feeWaived === "true",
     mobile:     c.mobile      || "",
     itrForm:    c.itrForm     || "",
@@ -386,6 +392,11 @@ function itrPill(filed) {
   return filed
     ? `<span class="itr-pill itr-filed">✓ Filed</span>`
     : `<span class="itr-pill itr-unfiled">⏳ Pending</span>`;
+}
+function docsPill(received) {
+  return received
+    ? '<span class="docs-pill docs-yes">📄 Docs ✓</span>'
+    : '<span class="docs-pill docs-no">📄 No docs</span>';
 }
 
 // ─── SYNC BAR ────────────────────────────────────────────────────────────────
@@ -631,6 +642,7 @@ function renderAssocDrillTable() {
     const itr = c.itrFiled
       ? '<span class="itr-pill itr-filed">&#10003; Filed</span>'
       : '<span class="itr-pill itr-unfiled">&#8987; Pending</span>';
+    const docs = c.itrFiled ? '<span style="color:var(--text-3);font-size:11px">&#8212;</span>' : docsPill(c.docsReceived);
     const sc   = STATUS_COLORS[c.status]||STATUS_COLORS.Pending;
     const pill = '<span class="status-pill" style="background:'+sc.bg+';color:'+sc.text+'">' +
                  '<span class="status-dot" style="background:'+sc.dot+'">&#8203;</span>'+c.status+'</span>';
@@ -641,6 +653,7 @@ function renderAssocDrillTable() {
       '<td style="font-size:12px;color:var(--text-3)">'+(c.mobile||'&#8212;')+'</td>' +
       '<td style="font-size:11px;color:var(--text-3)">'+c.ay+'</td>' +
       '<td>'+itr+'</td>' +
+      '<td>'+docs+'</td>' +
       '<td style="font-size:11px;color:var(--text-3)">'+(c.remarks||'&#8212;')+'</td>' +
       '<td><button class="btn btn-sm btn-outline" onclick="dashEdit('+c.id+')">&#9998;</button></td>' +
       '</tr>';
@@ -652,8 +665,8 @@ function renderAssocDrillTable() {
       '<button class="btn btn-sm btn-outline" onclick="setAssocDrill(null)" style="margin-left:auto;font-size:11px">&#10005; Close</button>' +
     '</div>' +
     '<div class="table-wrap"><table>' +
-      '<thead><tr><th>#</th><th>Name</th><th>PAN</th><th>Mobile</th><th>AY</th><th>ITR Status</th><th>Remarks</th><th>Edit</th></tr></thead>' +
-      '<tbody>'+(rows||'<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-3)">No clients in this category</td></tr>')+'</tbody>' +
+      '<thead><tr><th>#</th><th>Name</th><th>PAN</th><th>Mobile</th><th>AY</th><th>ITR Status</th><th>Docs</th><th>Remarks</th><th>Edit</th></tr></thead>' +
+      '<tbody>'+(rows||'<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text-3)">No clients in this category</td></tr>')+'</tbody>' +
     '</table></div>'
   );
 }
@@ -676,6 +689,7 @@ function renderAssocHome() {
       <td style="font-size:12px;color:var(--text-3)">${c.mobile||"—"}</td>
       <td style="font-size:11px;color:var(--text-3)">${c.ay}</td>
       <td>${itrPill(false)}</td>
+      <td>${docsPill(c.docsReceived)}</td>
       <td style="font-size:11px;color:var(--text-3)">${c.remarks||"—"}</td>
       <td><button class="btn btn-sm btn-outline" onclick="openModal(${JSON.stringify(c).replace(/"/g,"&quot;")})">✎</button></td>
     </tr>`).join("");
@@ -709,7 +723,7 @@ function renderAssocHome() {
       </div>
     </div>
     ${unfiled > 0 ? `<div class="section-heading">⏳ Clients Yet to File ITR (${unfiled})</div>
-    <div class="table-wrap"><table><thead><tr><th>#</th><th>Client Name</th><th>PAN</th><th>Mobile</th><th>AY</th><th>ITR Status</th><th>Remarks</th><th>Edit</th></tr></thead><tbody>${unfiledRows}</tbody></table></div>` : ""}
+    <div class="table-wrap"><table><thead><tr><th>#</th><th>Client Name</th><th>PAN</th><th>Mobile</th><th>AY</th><th>ITR Status</th><th>Docs</th><th>Remarks</th><th>Edit</th></tr></thead><tbody>${unfiledRows}</tbody></table></div>` : ""}
     <div class="db-panel" style="margin-top:20px">
       <div class="db-panel-title">📥 Import Client List</div>
       <div class="db-panel-sub">Upload a CSV file. Duplicate PANs are automatically skipped.</div>
@@ -810,6 +824,7 @@ function buildClientRows(list) {
       <td style="font-size:12px;color:var(--text-3)">${c.mobile||"—"}</td>
       <td style="font-size:11px;color:var(--text-3)">${c.ay}</td>
       <td>${itrPill(c.itrFiled)}</td>
+      <td>${c.itrFiled?'<span style="color:var(--text-3);font-size:11px">—</span>':docsPill(c.docsReceived)}</td>
       <td><span style="font-size:11px;padding:2px 8px;background:var(--navy-3);border-radius:4px">${c.itrForm||"—"}</span></td>
       <td class="td-amount">${isCA ? (c.feeWaived?"—":(c.openingDue>0?"<span style='color:#ffaa66'>"+fmt(c.openingDue)+"</span>":"—")) : "—"}</td>
       <td class="td-amount">${isCA ? (c.feeWaived?"<span class='waived-pill'>🎁</span>":fmt(c.feeCharged)) : "—"}</td>
@@ -827,7 +842,7 @@ function onClientSearchInput(val) {
   const tbody = document.getElementById("clients-tbody");
   const count = document.getElementById("clients-count");
   const total = document.getElementById("clients-total");
-  if (tbody) tbody.innerHTML = buildClientRows(list) || '<tr><td colspan="14" style="text-align:center;padding:30px;color:var(--text-3)">No records found</td></tr>';
+  if (tbody) tbody.innerHTML = buildClientRows(list) || '<tr><td colspan="15" style="text-align:center;padding:30px;color:var(--text-3)">No records found</td></tr>';
   if (count) count.textContent = list.length + " records";
   if (total) total.textContent = list.length + " of " + myClients().length + " total records";
 }
@@ -850,8 +865,8 @@ function renderClientsPage() {
       <span style="font-size:11px;color:var(--text-3)" id="clients-count">${list.length} records</span>
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th>#</th><th>Client Name</th><th>PAN</th><th>Mobile</th><th>AY</th><th>ITR Status</th><th>Form</th><th>Opening Due</th><th>This Yr Fee</th><th>Received</th><th>Yr Due</th><th>Client Total</th><th>Status</th><th>Edit</th></tr></thead>
-      <tbody id="clients-tbody">${rows||'<tr><td colspan="14" style="text-align:center;padding:30px;color:var(--text-3)">No records found</td></tr>'}</tbody>
+      <thead><tr><th>#</th><th>Client Name</th><th>PAN</th><th>Mobile</th><th>AY</th><th>ITR Status</th><th>Docs</th><th>Form</th><th>Opening Due</th><th>This Yr Fee</th><th>Received</th><th>Yr Due</th><th>Client Total</th><th>Status</th><th>Edit</th></tr></thead>
+      <tbody id="clients-tbody">${rows||'<tr><td colspan="15" style="text-align:center;padding:30px;color:var(--text-3)">No records found</td></tr>'}</tbody>
     </table></div>
     <div style="font-size:11px;color:var(--text-3);margin-top:8px;text-align:right" id="clients-total">${list.length} of ${myClients().length} total records</div>
   </div>`;
@@ -921,7 +936,11 @@ function renderMasterCards(list) {
   if (list.length === 0) return '<div class="master-empty">📋<br>No clients found</div>';
   return list.map(m => {
     const outstanding = m.filings.reduce((s,f)=>s+totalDue(f),0);
-    const ayChips = m.filings.map(f=>'<span class="master-ay-chip">'+f.ay.replace("AY ","")+'</span>').join("");
+    const ayChips = m.filings.map(f=>{
+      const docsTag = (!f.itrFiled && f.docsReceived) ? '<span title="Docs received" style="color:#5fe0a8;font-size:9px;margin-left:2px">📄</span>' : '';
+      return '<span class="master-ay-chip">'+f.ay.replace("AY ","")+docsTag+'</span>';
+    }).join("");
+    const pendingDocs = m.filings.filter(f=>!f.itrFiled && f.docsReceived).length;
     return '<div class="master-card"><div class="master-card-header">' +
       '<div><div class="master-card-name">'+m.name+'</div><div class="master-card-pan">'+m.pan+'</div></div>' +
       '<div class="master-card-mobile">'+(m.mobile||"—")+'</div>' +
@@ -966,6 +985,7 @@ function makeDrillRow(c, i) {
   const itr  = c.itrFiled
     ? '<span class="itr-pill itr-filed">&#10003; Filed</span>'
     : '<span class="itr-pill itr-unfiled">&#8987; Pending</span>';
+  const docs = c.itrFiled ? '<span style="color:var(--text-3);font-size:11px">&#8212;</span>' : docsPill(c.docsReceived);
   const opn  = c.openingDue>0 ? '<span style="color:#ffaa66">'+fmt(c.openingDue)+'</span>' : '&#8212;';
   return '<tr>' +
     '<td style="font-size:11px;color:var(--text-3)">'+(i+1)+'</td>' +
@@ -973,6 +993,7 @@ function makeDrillRow(c, i) {
     '<td class="td-pan">'+c.pan+'</td>' +
     '<td style="font-size:12px;color:var(--text-3)">'+(c.mobile||'&#8212;')+'</td>' +
     '<td>'+itr+'</td>' +
+    '<td>'+docs+'</td>' +
     '<td class="td-amount">'+opn+'</td>' +
     '<td class="td-amount">'+fmt(c.feeCharged)+'</td>' +
     '<td class="td-amount" style="color:#66ffaa">'+fmt(c.amountReceived)+'</td>' +
@@ -986,7 +1007,7 @@ function makeDrillRow(c, i) {
 function renderDashDrill(clients, billable) {
   const drill = state.dashDrill;
   const thead = '<thead><tr><th>#</th><th>Name</th><th>PAN</th><th>Mobile</th>' +
-                '<th>ITR</th><th>Opening Due</th><th>This Yr Fee</th><th>Received</th><th>Yr Due</th><th>Client Total</th><th>Status</th><th>Edit</th></tr></thead>';
+                '<th>ITR</th><th>Docs</th><th>Opening Due</th><th>This Yr Fee</th><th>Received</th><th>Yr Due</th><th>Client Total</th><th>Status</th><th>Edit</th></tr></thead>';
 
   let drillList  = [];
   let drillTitle = "";
@@ -1004,7 +1025,7 @@ function renderDashDrill(clients, billable) {
   if (drill) {
     const rows = drillList.length
       ? drillList.map(makeDrillRow).join("")
-      : '<tr><td colspan="12" style="text-align:center;padding:24px;color:var(--text-3)">No clients in this category</td></tr>';
+      : '<tr><td colspan="13" style="text-align:center;padding:24px;color:var(--text-3)">No clients in this category</td></tr>';
     return (
       '<div style="margin:16px 0 8px;display:flex;align-items:center;gap:10px">' +
         '<span style="font-size:13px;font-weight:600;color:'+drillColor+'">'+drillTitle+' ('+drillList.length+')</span>' +
@@ -1021,11 +1042,11 @@ function renderDashDrill(clients, billable) {
     .slice(0, 10);
   const urgentRows = urgent.length
     ? urgent.map(makeDrillRow).join("")
-    : '<tr><td colspan="12" style="text-align:center;padding:30px;color:var(--text-3)">&#127881; All fees collected!</td></tr>';
+    : '<tr><td colspan="13" style="text-align:center;padding:30px;color:var(--text-3)">&#127881; All fees collected!</td></tr>';
   return (
     '<div style="margin:16px 0 8px;font-size:12px;color:var(--text-3)">&#9888; Top Outstanding &#8212; click any card above to drill down</div>' +
     '<div class="table-wrap"><table>' +
-      '<thead><tr><th>#</th><th>Client Name</th><th>PAN</th><th>Mobile</th><th>ITR</th>' +
+      '<thead><tr><th>#</th><th>Client Name</th><th>PAN</th><th>Mobile</th><th>ITR</th><th>Docs</th>' +
       '<th>Opening Due</th><th>This Yr Fee</th><th>Received</th><th>Yr Due</th><th>Client Total</th><th>Status</th><th>Edit</th></tr></thead>' +
       '<tbody>'+urgentRows+'</tbody>' +
     '</table></div>'
@@ -1203,6 +1224,13 @@ function renderModal() {
             </div>
             <input type="hidden" id="f-itrFiled" value="${v("itrFiled")??"false"}"/>
           </div>
+          <div class="form-group"><label class="form-label">Documents Received?</label>
+            <div style="display:flex;gap:8px">
+              <div onclick="setDocs(false)" id="docs-no-btn" style="flex:1;padding:9px 12px;border-radius:var(--radius);border:1px solid ${!v("docsReceived")?"var(--gold-dim)":"var(--border)"};background:${!v("docsReceived")?"rgba(201,168,76,0.12)":"var(--navy-3)"};color:${!v("docsReceived")?"var(--gold-light)":"var(--text-3)"};font-size:12px;font-weight:500;cursor:pointer;text-align:center">📄 Not Received</div>
+              <div onclick="setDocs(true)" id="docs-yes-btn" style="flex:1;padding:9px 12px;border-radius:var(--radius);border:1px solid ${v("docsReceived")?"#5fe0a8":"var(--border)"};background:${v("docsReceived")?"rgba(0,180,120,0.18)":"var(--navy-3)"};color:${v("docsReceived")?"#5fe0a8":"var(--text-3)"};font-size:12px;font-weight:500;cursor:pointer;text-align:center">📄 Received ✓</div>
+            </div>
+            <input type="hidden" id="f-docsReceived" value="${v("docsReceived")??"false"}"/>
+          </div>
           <div class="form-group"><label class="form-label">ITR Form <span class="opt-tag">optional</span></label><select class="form-select" id="f-itrForm">${formOpts}</select></div>
           <div class="form-group"><label class="form-label">Filing Date <span class="opt-tag">if filed</span></label><input class="form-input" id="f-filingDate" type="date" value="${v("filingDate")}" max="${today()}"/></div>
           <div class="form-section-label">💰 Fee & Payment</div>
@@ -1233,6 +1261,22 @@ function renderModal() {
       </div>
     </div>
   </div>`;
+}
+
+function setDocs(val) {
+  document.getElementById("f-docsReceived").value = val;
+  const noBtn  = document.getElementById("docs-no-btn");
+  const yesBtn = document.getElementById("docs-yes-btn");
+  if (noBtn) {
+    noBtn.style.borderColor = !val ? "var(--gold-dim)" : "var(--border)";
+    noBtn.style.background   = !val ? "rgba(201,168,76,0.12)" : "var(--navy-3)";
+    noBtn.style.color        = !val ? "var(--gold-light)" : "var(--text-3)";
+  }
+  if (yesBtn) {
+    yesBtn.style.borderColor = val ? "#5fe0a8" : "var(--border)";
+    yesBtn.style.background   = val ? "rgba(0,180,120,0.18)" : "var(--navy-3)";
+    yesBtn.style.color        = val ? "#5fe0a8" : "var(--text-3)";
+  }
 }
 
 function setWaived(val) {
@@ -1366,6 +1410,7 @@ async function saveModalClient() {
   const amt    = waived ? 0 : parseFloat(document.getElementById("f-amtRcv").value)||0;
   const mobile = document.getElementById("f-mobile").value.trim();
   const itrFiled  = document.getElementById("f-itrFiled").value === "true";
+  const docsReceived = document.getElementById("f-docsReceived").value === "true";
   const itrForm   = document.getElementById("f-itrForm").value;
   const filingDate= document.getElementById("f-filingDate").value;
   const payDate   = document.getElementById("f-payDate").value;
@@ -1378,7 +1423,7 @@ async function saveModalClient() {
     const client = {
       id: state.modalClient.id, pan, name, mobile,
       ay: state.modalClient.ay,
-      itrFiled, itrForm, filingDate, feeWaived: waived,
+      itrFiled, docsReceived, itrForm, filingDate, feeWaived: waived,
       openingDue: opening, feeCharged: fee, amountReceived: amt,
       paymentDate: payDate, paymentMode: payMode,
       status: calcStatus(fee, amt, waived, opening),
@@ -1410,7 +1455,7 @@ async function saveModalClient() {
     newEntries.push({
       id: Date.now() + k,
       pan, name, mobile, ay,
-      itrFiled, itrForm, filingDate, feeWaived: waived,
+      itrFiled, docsReceived, itrForm, filingDate, feeWaived: waived,
       openingDue: opening, feeCharged: fee, amountReceived: amt,
       paymentDate: payDate, paymentMode: payMode,
       status: calcStatus(fee, amt, waived, opening),
@@ -1473,6 +1518,7 @@ async function handleCSVImport(event) {
       itrForm:    get("itrform","form","itr"),
       ay:         get("ay","assessmentyear") || state.filterAY,
       itrFiled:   ["yes","true","1","filed"].includes(get("itrfiled","filed","itrstatus").toLowerCase()),
+      docsReceived: ["yes","true","1","received"].includes(get("docsreceived","docs","documents").toLowerCase()),
       filingDate: get("filingdate","dateoffiling","date"),
       feeWaived:  waived, feeCharged: waived?0:fee,
       amountReceived:0, paymentDate:"", paymentMode:"",
@@ -1572,8 +1618,8 @@ async function carryForwardYear() {
 
 // ─── CSV EXPORT ───────────────────────────────────────────────────────────────
 function exportCSV() {
-  const rows=[["PAN","Name","Mobile","AY","ITR Form","ITR Filed","Filing Date","Fee Waived","Opening Due","Fee Charged","Received","Total Due","Payment Mode","Status","Remarks","Partner"]];
-  myClients().forEach(c=>rows.push([c.pan,c.name,c.mobile||"",c.ay,c.itrForm||"",c.itrFiled?"Yes":"No",c.filingDate||"",c.feeWaived?"Yes":"No",c.feeWaived?"Waived":(c.openingDue||0),c.feeWaived?"Waived":c.feeCharged,c.feeWaived?"Waived":c.amountReceived,c.feeWaived?"Waived":totalDue(c),c.paymentMode||"",c.status,c.remarks||"",partnerName(c.partner)]));
+  const rows=[["PAN","Name","Mobile","AY","ITR Form","ITR Filed","Docs Received","Filing Date","Fee Waived","Opening Due","Fee Charged","Received","Total Due","Payment Mode","Status","Remarks","Partner"]];
+  myClients().forEach(c=>rows.push([c.pan,c.name,c.mobile||"",c.ay,c.itrForm||"",c.itrFiled?"Yes":"No",c.docsReceived?"Yes":"No",c.filingDate||"",c.feeWaived?"Yes":"No",c.feeWaived?"Waived":(c.openingDue||0),c.feeWaived?"Waived":c.feeCharged,c.feeWaived?"Waived":c.amountReceived,c.feeWaived?"Waived":totalDue(c),c.paymentMode||"",c.status,c.remarks||"",partnerName(c.partner)]));
   const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,"")+'"').join(",")).join("\r\n");
   const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
   const url=URL.createObjectURL(blob);
